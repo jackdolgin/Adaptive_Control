@@ -32,6 +32,8 @@ pics_info = pd.read_csv('IPNP_spreadsheet.csv')
 
 allpics = os.listdir("IPNP_Pictures")
 
+trialClock = core.Clock()
+
 
 def filter_pics(series_element):
     return any(s.startswith(series_element) for s in allpics)
@@ -53,13 +55,18 @@ def runTrial(a_key):
     frame_count = 0
     stim_onset(True, a_key)
     filename = os.path.join("data", a_key + ".wav")
-
-    vpvkOn = vk.OnsetVoiceKey()
-    vpvkOff = vk.OffsetVoiceKey(
+#    vpvkOn = vk.OnsetVoiceKey()
+    vpvkOff = vk.OffsetVoiceKey()
+#    vpvkOff = vk.OffsetVoiceKey(
+    vpvkOn = vk.OnsetVoiceKey(
         sec=2, 
         file_out = filename)
     vpvkOff.start()
     vpvkOn.start()
+#    vpvkOff.tStart=trialClock.getTime()
+#    vpvkOn.tStart=trialClock.getTime()
+    some_count = 0
+    trialClock.reset()
     while frame_count < timeout:
         if event.getKeys(keyList = ["escape"]):
             core.quit()
@@ -67,10 +74,18 @@ def runTrial(a_key):
         win.flip()
         if hasattr(vpvkOff, 'event_offset') and vpvkOff.event_offset > 0:
             break
+        if hasattr(vpvkOn, 'event_onset') and vpvkOn.event_onset > 0 and some_count == 0:
+            print (trialClock.getTime())
+            some_count += 1
     stim_onset(False, a_key)
+    print (vpvkOn.event_onset)
+    print (vpvkOff.event_offset)
     vpvkOff.stop()
     vpvkOn.stop()
-    vpvk2 = vk.OffsetVoiceKey(file_in=filename)
+    print (vpvkOn.event_onset)
+    print (vpvkOff.event_offset)
+    vpvk2 = vk.OnsetVoiceKey(file_in=filename)
+#    vpvk2 = vk.OffsetVoiceKey(file_in=filename)
     vpvk2.start()  # non-blocking
     frame_count = 0
     while frame_count < 100:
@@ -78,7 +93,6 @@ def runTrial(a_key):
             core.quit()
         frame_count += 1
         win.flip()
-    print (vpvkOn.event_onset)
 
 for key in adict:
     runTrial(key)
