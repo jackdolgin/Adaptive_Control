@@ -45,7 +45,7 @@ pics_info_dplyed = (pics_info >>
 
 adict = dict([(i.capitalize(), (visual.ImageStim(win, size=[0.5,0.5], image = os.path.join("IPNP_Pictures", a + i + ".png")),
                                 visual.TextStim(win, text = i.capitalize(), color=(-1,-1,-1),fontFiles=[os.path.join('fonts', 'Lato-Reg.ttf')])))  for i, a in zip(pics_info_dplyed.Dominant_Response, pics_info_dplyed.Pic_Num)])
-#                                visual.TextBox(window = win, text = i.capitalize(), color=(-1,-1,-1))))  for i, a in zip(pics_info_dplyed.Dominant_Response, pics_info_dplyed.Pic_Num)])
+#                                visual.TextBox(window = win, text = i.capitalize(), font_color=(-1,-1,-1), background_color = [1,1,1,.5], size = (.3,.3))))  for i, a in zip(pics_info_dplyed.Dominant_Response, pics_info_dplyed.Pic_Num)])
 
 
 def stim_onset(logical, sub_key):
@@ -64,6 +64,7 @@ def runTrial(a_key):
     while frame_count < timeout:
         if event.getKeys(keyList = ["escape"]):
             core.quit()
+#        [adict[a_key][i].draw() for i in range(len(adict[a_key]))]
         frame_count += 1
         win.flip()
         if hasattr(vpvkOff, 'event_offset') and vpvkOff.event_offset > 0:
