@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 # PsychoPy is required for this experiment
-# Install dplython using "pip install dfply"; i.e. on my Mac I typed into termainal: "pip install dfply"; if you're running script from the PscyhoPy app you'll also need to (at least on a Mac) copy the dfply folder into PsychoPy3 -> Contents -> Resources -> lib -> python3.6
+# Install dplython using "pip install dfply"; i.e. on my Mac I typed into terminal: "pip install dfply"; if you're running script from the PscyhoPy app you'll also need to (at least on a Mac) copy the dfply folder into PsychoPy3 -> Contents -> Resources -> lib -> python3.6
 #https://github.com/kieferk/dfply/issues/86#issuecomment-533351436
 # or on PC add it inside the following folder: PsychoPy3\Lib\site-packages; can also just download the folder from https://github.com/kieferk/dfply;
 # once you have the dfply folder, you want to take its inner folder that is also called dfply and that's the folder to copy into psychopy's python directory
@@ -21,16 +21,19 @@ _thisDir = os.path.dirname(os.path.abspath(__file__))
 os.chdir(_thisDir)
 
 # Store info about the experiment session
-expInfo = {'participant':'','session':''}
-if gui.DlgFromDict(dictionary=expInfo).OK == False:
-    core.quit()                                                                 # user pressed cancel during popout
+expInfo = {'participant':'','session':''}                                      # creates dictionary of experiment information
+if gui.DlgFromDict(dictionary=expInfo).OK == False:                           # creates popup at beginning of experiment that asks for participant number
+    core.quit()                                                                 # says, if you hit escape/click cancel when that popup appears, then don't run the experiment; if this if statement didn't exist, experiment would run regardly of whether you hit escape/click cancel
 expInfo['date'] = data.getDateStr()                                             # add a simple timestamp
-thisExp = data.ExperimentHandler(extraInfo=expInfo, dataFileName='afile')       # an ExperimentHandler isn't essential but helps with data saving
+filename = _thisDir + os.sep + u'analysis/data/%s/%s' % (expInfo['participant'], expInfo['participant'])    #creates data file name
+thisExp = data.ExperimentHandler(extraInfo = expInfo, dataFileName = filename)
+logFile = logging.LogFile(filename + '.log', level = logging.EXP)              # save a log file for detail verbose info
 
 # Setup the Window
 win = visual.Window(
     size=(1280, 800), fullscr=True, allowGUI=False,
     monitor='testMonitor', color=[1,1,1], useFBO=True)
+expInfo['frameRate'] = win.getActualFrameRate()                                # store frame rate of monitor
 
 pics_cap = 200
 pct_split = .75
@@ -117,6 +120,8 @@ def runTrial(a_key):
 for key in adict:
     runTrial(key)
 
+thisExp.saveAsWideText(filename + '.csv')
+thisExp.saveAsPickle(filename) # https://psychopy.org/builder/settings.html#data-settings
 thisExp.abort()  # ensure everything is closed down or data files will save again on exit
 win.close()
 core.quit()
