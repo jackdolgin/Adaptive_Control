@@ -36,7 +36,7 @@ win = visual.Window(
 expInfo['frameRate'] = win.getActualFrameRate()                                 # store frame rate of monitor
 
 blocks = 8
-prac_trials = 10
+prac_trials = 12
 pics_cap = 200
 all_trials = prac_trials + pics_cap
 pct_split = .75
@@ -58,9 +58,6 @@ resp_timeout = to_frames(resp_timeout_input)
 pics_info = pd.read_csv('IPNP_spreadsheet.csv')
 
 allpics = os.listdir("IPNP_Pictures")
-
-trialClock = core.Clock()
-globalClock = core.MonotonicClock()                                             # to track the time since experiment started
 
 def filter_pics(series_element):
     return any(s.startswith(series_element) for s in allpics)
@@ -98,12 +95,13 @@ def runTrial(dict_key, dict_vals):
                 sec = timeout_input,
                 file_out = os.path.join("data", dict_key + ".wav"))
             [i.start() for i in (vpvkOff, vpvkOn)]
-            trialClock.reset()
+            start_recording = globalClock.getTime()
         elif frame_count > fix_duration:
             [dict_vals[i].draw() for i in range(2)]
             if hasattr(vpvkOff, 'event_offset') and vpvkOff.event_offset > 0:
                 resp_frame_count += 1
             elif frame_count == timeout and vpvkOn.event_onset == 0:
+                vpvkOff.event_offset = "NA"
                 break
         frame_count += 1
         win.flip()
@@ -115,7 +113,7 @@ def runTrial(dict_key, dict_vals):
                ('Picture_Label', dict_vals[2]),
                ('Response_Time', vpvkOn.event_onset),
                ('Response_Finish', vpvkOff.event_offset),
-               ('Response_in_Overall_Exp', globalClock.getTime())):
+               ('Stim_Onset_in_Overall_Exp', start_recording)):
 
         thisExp.addData(i[0], i[1])
     thisExp.nextEntry()
@@ -125,22 +123,23 @@ def runTrial(dict_key, dict_vals):
 
 def create_inst(t):
     return visual.TextStim(win = win, text = t, units = 'deg', pos = (0, 0),
-        height = 1, wrapWidth = 18, fontFiles = ['Lato-Reg.ttf'])
+        height = 1, wrapWidth = 18, color = 'black', fontFiles = ['Lato-Reg.ttf'])
 
 def continue_goback(s):
     return "\n\nPress space to " + s + " or \"B\" to go back."
 
-inst1 = create_inst("Welcome to the study! You will be completing a sort of voice response task, meaning quite literally you'll be verbally responding to drawings you see.\n\nPress space to continue.")
+inst1 = create_inst("Welcome to the study! You will be completing a voice response task, meaning quite literally you'll be verbally responding to drawings you see.\n\nPress space to continue.")
 
-inst2 = create_inst("On every trial you will see a drawing and an overlaid word. Some of the time the drawing will match the word, the rest of the time they will conflict. Your task is to always name the drawing (as opposed to the word). That's all there is!" + continue_goback("continue"))
+inst2 = create_inst("On every trial you will see a drawing and an overlaid word. Some of the time the drawing will match the word, the rest of the time they will conflict. Your task is to always name the drawing (as opposed to the word). That's it!" + continue_goback("continue"))
 
-inst3 = create_inst("The task moves pretty quickly, so to get the hang of it you'll go through the following practice trials. We ask that when you name the image, you deliver your into the microphone." + continue_goback("begin"))
+inst3 = create_inst("The task moves pretty quickly, so to get the hang of it you'll go through the following practice trials. We ask that when you name the image, you deliver your response into the microphone." + continue_goback("begin"))
 
-welcmmain = create_inst("Welcome to the beginning of the main experiment. This experiment will last about 50 minutes. It will feature trials split among " + str(blocks - 1) + u" breaks (which will be self-timed, so you can break as long as you’d like).\n\nPress space to continue.".encode('utf-8').decode('utf-8'))
+welcmmain = create_inst("Welcome to the beginning of the main experiment. This experiment will last about 20 minutes. It will feature trials split among " + str(blocks - 1) + u" breaks (which will be self-timed, so you can break as long as you’d like).\n\nPress space to continue.".encode('utf-8').decode('utf-8'))
 
 main_prev = create_inst("The forthcoming trials will work just like the practice trials: a drawing and a word will appear, and you are tasked with verbally naming the drawing." + continue_goback("begin"))
 
-break_message = create_inst("You've reached break " + str((trial_num - prac_trials) / (pics_cap / blocks)) + " of " + str(blocks - 1) + ". This break is self-timed, so whenever you're ready press spacebar to continue the study.")
+def break_message(trial_count):
+    return create_inst("You've reached break " + str((trial_count - prac_trials) / (pics_cap / blocks)) + " of " + str(blocks - 1) + ". This break is self-timed, so whenever you're ready press spacebar to continue the study.")
 
 thanks = create_inst("Thank you so much for your participation! Let the experimenter know that you're finished, and he'll set up the 1-minute, post-study demographic survey.")
 
@@ -154,7 +153,7 @@ def instr_list(thelist):
         elif event.getKeys(keyList = ["b"]):
             if advance > 0:
                 advance -= 1
-        for i in range(len(thelist) + 1):
+        for i in range(len(thelist)):
             if advance == i:
                 thelist[i].setAutoDraw(True)
             else:
@@ -164,55 +163,14 @@ def instr_list(thelist):
     while frameN < to_frames(1.5):
         frameN += 1
         win.flip()
-#
-#
-# def practice_instructions():
-#     while advance < 3:
-#         if event.getKeys(keyList = ["space"]):
-#             advance += 1
-#         elif event.getKeys(keyList = ["b"]):
-#             if advance > 0:
-#                 advance -= 1
-#         if advance == 0:
-#             inst2.setAutoDraw(False)
-#             inst1.setAutoDraw(True)
-#         elif advance == 1:
-#             inst1.setAutoDraw(False)
-#             inst3.setAutoDraw(False)
-#             inst2.setAutoDraw(True)
-#         elif advance == 2:
-#             inst2.setAutoDraw(False)
-#             inst3.setAutoDraw(True)
-#         elif advance == 3:
-#             inst3.setAutoDraw(False)
-#
-#         win.flip()
-#
-# def main_instructions():
-#
-#         while advance < 2:
-#             if event.getKeys(keyList = ["space"]):
-#                 advance += 1
-#             if advance == 0:
-#                 main_prev.setAutoDraw(False)
-#                 welcmmain.setAutoDraw(True)
-#             elif advance == 1:
-#                 welcmmain.setAutoDraw(False)
-#                 main_prev.setAutoDraw(True)
-#                 elif event.getKeys(keyList = ["b"]):
-#                     advance = 0
-#             elif advance == 2:
-#                 main_prev.setAutoDraw(False)
-#
-#             win.flip()
-
 
 instr_list([inst1, inst2, inst3])
+globalClock = core.MonotonicClock()                                             # to track the time since experiment started
 for trial_num, (trial_key, trial_vals) in enumerate(adict.items()):
     if trial_num == prac_trials:
-        instr_list([main_prev, welcmmain])
+        instr_list([welcmmain, main_prev])
     elif (trial_num - prac_trials) % (pics_cap / blocks) == 0:
-        instr_list([break_message])
+        instr_list([break_message(trial_num)])
     runTrial(trial_key, trial_vals)
 
 instr_list(thanks)
