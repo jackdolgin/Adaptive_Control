@@ -5,7 +5,7 @@
 # or on PC add it inside the following folder: PsychoPy3\Lib\site-packages; can also just download the folder from https://github.com/kieferk/dfply;
 # once you have the dfply folder, you want to take its inner folder that is also called dfply and that's the folder to copy into psychopy's python directory
 from dfply import *
-from psychopy import locale_setup, prefs, gui, visual, core, data, event, logging, clock, prefs
+from psychopy import locale_setup, prefs, gui, visual, core, data, event, logging, clock, prefs, microphone
 import numpy as np
 import pandas as pd
 import random
@@ -13,6 +13,7 @@ import glob
 import os
 import psychopy.voicekey as vk
 
+microphone.switchOn()
 vk.pyo_init()
 
 
@@ -25,7 +26,7 @@ expInfo = {'participant':'','session':''}                                       
 if gui.DlgFromDict(dictionary=expInfo).OK == False:                             # creates popup at beginning of experiment that asks for participant number
     core.quit()                                                                 # says, if you hit escape/click cancel when that popup appears, then don't run the experiment; if this if statement didn't exist, experiment would run regardly of whether you hit escape/click cancel
 expInfo['date'] = data.getDateStr()                                             # add a simple timestamp
-filename = _thisDir + os.sep + u'analysis/data/%s/%s' % (expInfo['participant'], expInfo['participant'])    #creates data file name
+filename = _thisDir + os.sep + u'data/%s/%s' % (expInfo['participant'], 'exp_data')    #creates data file name
 thisExp = data.ExperimentHandler(extraInfo = expInfo, dataFileName = filename)
 logFile = logging.LogFile(filename + '.log', level = logging.EXP)               # save a log file for detail verbose info
 
@@ -33,6 +34,7 @@ logFile = logging.LogFile(filename + '.log', level = logging.EXP)               
 win = visual.Window(
     size=(1280, 800), fullscr=True, allowGUI=False,
     monitor='testMonitor', color=[1,1,1], useFBO=True)
+
 expInfo['frameRate'] = win.getActualFrameRate()                                 # store frame rate of monitor
 
 blocks = 8
@@ -54,6 +56,7 @@ timeout = to_frames(timeout_input)
 resp_timeout_input = .5
 resp_timeout = to_frames(resp_timeout_input)
 
+mic_1 = microphone.AdvAudioCapture(name='mic_1', saveDir= filename + '.wav', stereo=False, chnl=0)
 
 pics_info = pd.read_csv('IPNP_spreadsheet.csv')
 
@@ -83,21 +86,21 @@ for i, a, b, c in zip(pics_info_dplyed.Dominant_Response, pics_info_dplyed.Pic_N
                             visual.TextBox(window = win, text = b.upper(), font_color=(-1,-1,-1), background_color = [1,1,1,.8], textgrid_shape=[len(b), 1]),
                             b, i, c)
 
-def runTrial(dict_key, dict_vals):
+def runTrial():
     frame_count = resp_frame_count = 0
     fix.setAutoDraw(True)
     while resp_frame_count < resp_timeout:
-        if event.getKeys(keyList = ["escape"]): core.quit()
+        if event.getKeys(keyList = ["escape"]):
+            mic_1.stop()
+            core.quit()
         if frame_count == fix_duration:
             fix.setAutoDraw(False)
             vpvkOff = vk.OffsetVoiceKey()
-            vpvkOn = vk.OnsetVoiceKey(
-                sec = timeout_input,
-                file_out = os.path.join("data", dict_key + ".wav"))
+            vpvkOn = vk.OnsetVoiceKey(sec = timeout_input)
             [i.start() for i in (vpvkOff, vpvkOn)]
             start_recording = globalClock.getTime()
         elif frame_count > fix_duration:
-            [dict_vals[i].draw() for i in range(2)]
+            [trial_vals[i].draw() for i in range(2)]
             if hasattr(vpvkOff, 'event_offset') and vpvkOff.event_offset > 0:
                 resp_frame_count += 1
             elif frame_count == timeout and vpvkOn.event_onset == 0:
@@ -109,8 +112,8 @@ def runTrial(dict_key, dict_vals):
     vpvkOn.stop()
 
     for i in (('Trial', trial_num),
-               ('Picture_Identity', dict_vals[3]),
-               ('Picture_Label', dict_vals[2]),
+               ('Picture_Identity', trial_vals[3]),
+               ('Picture_Label', trial_vals[2]),
                ('Response_Time', vpvkOn.event_onset),
                ('Response_Finish', vpvkOff.event_offset),
                ('Stim_Onset_in_Overall_Exp', start_recording)):
@@ -139,7 +142,7 @@ welcmmain = create_inst("Welcome to the beginning of the main experiment. This e
 main_prev = create_inst("The forthcoming trials will work just like the practice trials: a drawing and a word will appear, and you are tasked with verbally naming the drawing." + continue_goback("begin"))
 
 def break_message(trial_count):
-    return create_inst("You've reached break " + str((trial_count - prac_trials) / (pics_cap / blocks)) + " of " + str(blocks - 1) + ". This break is self-timed, so whenever you're ready press spacebar to continue the study.")
+    return create_inst("You've reached break " + str(int((trial_count - prac_trials) / (pics_cap / blocks))) + " of " + str(blocks - 1) + ". This break is self-timed, so whenever you're ready press spacebar to continue the study.")
 
 thanks = create_inst("Thank you so much for your participation! Let the experimenter know that you're finished, and he'll set up the 1-minute, post-study demographic survey.")
 
@@ -164,16 +167,17 @@ def instr_list(thelist):
         frameN += 1
         win.flip()
 
+mic_1.record(sec=100000, block=False)                                          # sets an impossibly long time-out window so recording will last the whole experiment
 instr_list([inst1, inst2, inst3])
 globalClock = core.MonotonicClock()                                             # to track the time since experiment started
 for trial_num, (trial_key, trial_vals) in enumerate(adict.items()):
     if trial_num == prac_trials:
         instr_list([welcmmain, main_prev])
-    elif (trial_num - prac_trials) % (pics_cap / blocks) == 0:
+    elif (trial_num - prac_trials) % (pics_cap / blocks) == 0 and trial_num < all_trials:
         instr_list([break_message(trial_num)])
-    runTrial(trial_key, trial_vals)
-
-instr_list(thanks)
+    runTrial()
+mic_1.stop()    
+instr_list([thanks])
 
 thisExp.saveAsWideText(filename + '.csv')
 thisExp.saveAsPickle(filename) # https://psychopy.org/builder/settings.html#data-settings
