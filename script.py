@@ -158,7 +158,7 @@ def runTrial():
     vpvkOff.stop()
     vpvkOn.stop()
 
-    for i in (('Trial', trial_num),
+    for i in (('Trial', trial_num - pract_trials),
                ('Picture_Identity', trial_vals[3]),
                ('Picture_Label', trial_vals[2]),
                ('Response_Time', vpvkOn.event_onset),
