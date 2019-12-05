@@ -8,6 +8,7 @@ from dfply import *
 from psychopy import locale_setup, prefs, gui, visual, core, data, event, logging, clock, prefs, microphone
 import numpy as np
 import pandas as pd
+import fractions
 import random
 import glob
 import os
@@ -32,18 +33,24 @@ logFile = logging.LogFile(filename + '.log', level = logging.EXP)               
 
 # Setup the Window
 win = visual.Window(
-    size=(1280, 800), fullscr=True, allowGUI=False,
+    size=(1280, 800), fullscr=False, allowGUI=False,
     monitor='testMonitor', color=[1,1,1], useFBO=True)
 
 expInfo['frameRate'] = win.getActualFrameRate()                                 # store frame rate of monitor
 
-blocks = 8
+first_congruency = random.choice(("congruent", "incongruent"))
+expInfo['first_congruecy'] = first_congruency
+blocks = 4
 prac_trials = 12
-pics_cap = 200
+pics_cap = 320
+block_trials = pics_cap / blocks
 all_trials = prac_trials + pics_cap
-pct_split = .75
-common_trials = round(all_trials * pct_split)
-cong_trials = random.choice((common_trials, all_trials - common_trials))
+cong_split = .5
+block_split = .75
+block_split_remainder = 1 - block_split
+new_step = 1 / fractions.gcd(block_split, block_split_remainder)
+block_majority_trials = block_trials * block_split
+block_minority_trials = block_trials * block_split_remainder
 
 framelength = win.monitorFramePeriod
 def to_frames(t):                                                               # Converts time to frames accounting for the computer's refresh rate (aka framelength); input is the desired time on screen, but the ouput is the closest multiple of the refresh rate
@@ -65,26 +72,64 @@ allpics = os.listdir("IPNP_Pictures")
 def filter_pics(series_element):
     return any(s.startswith(series_element) for s in allpics)
 
+@make_symbolic
+def to_ceil(x):
+    return np.ceil(x)
+
+@make_symbolic
+def to_floor(x):
+    return np.floor(x)
+
+pics_info_dplyed0 = (pics_info >>
+    mask(X.Pic_Num.apply(filter_pics)) >>
+    arrange(X.Agreement_Factor, X.Alternative_Names, X.Mean_RT_Dominant) >>
+    head(int(pics_cap * (1 + cong_split))) >>
+    sample(frac = 1) >>
+    mutate(Lead_Dominant_Response = lead(X.Dominant_Response, int(pics_cap * cong_split))) >>
+    mutate(row_num_setup = 1) >>
+    mutate(row_num = row_number(X.row_num_setup)) >>
+    mutate(congruency = if_else(X.row_num <= pics_cap * cong_split, "congruent", "incongruent")) >>
+    mutate(label = if_else(X.congruency == "congruent", X.Dominant_Response, X.Lead_Dominant_Response)) >>
+    head(pics_cap) >>
+    group_by(X.congruency) >>
+    mutate(cong_order = dense_rank(X.row_num)) >>
+    mutate(cong_order_clustered = to_ceil(X.cong_order / block_minority_trials)) >>
+    mutate(sumin = to_floor(X.cong_order_clustered / new_step)) >>
+    mutate(new_row_n = if_else(X.congruency == "congruent",
+                        X.cong_order + block_trials * (to_floor(X.cong_order_clustered / new_step)),
+                        X.cong_order + block_majority_trials + block_trials * (to_floor((X.cong_order_clustered - 1) / new_step)))) >>
+    ungroup() >>
+    arrange(X.new_row_n) >>
+    mutate(block = to_ceil(X.new_row_n / block_trials)) >>
+    group_by(X.block) >>
+    sample(frac = 1)
+    )
+    
+
 pics_info_dplyed = (pics_info >>
     mask(X.Pic_Num.apply(filter_pics)) >>
     arrange(X.Agreement_Factor, X.Alternative_Names, X.Mean_RT_Dominant) >>
-    head(all_trials + common_trials) >>
+    tail(int(prac_trials * (1 + cong_split))) >>
     sample(frac = 1) >>
-    mutate(Lead_Dominant_Response = lead(X.Dominant_Response, common_trials),
-           row_num_setup = 1) >>
+    mutate(Lead_Dominant_Response = lead(X.Dominant_Response, int(prac_trials * cong_split))) >>
+    mutate(row_num_setup = 1) >>
     mutate(row_num = row_number(X.row_num_setup)) >>
-    mutate(label = if_else(X.row_num <= all_trials - cong_trials, X.Dominant_Response, X.Lead_Dominant_Response)) >>
-    head(all_trials) >>
-    sample(frac = 1))
+    mutate(congruency = if_else(X.row_num <= prac_trials * cong_split, "congruent", "incongruent")) >>
+    mutate(label = if_else(X.congruency == "congruent", X.Dominant_Response, X.Lead_Dominant_Response)) >>
+    head(prac_trials) >>
+    sample(frac = 1) >>
+    bind_rows(pics_info_dplyed0, join = 'inner')
+)
+    
 
 fix = visual.TextStim(win=win, name = 'fix', color='black',text='+')
 
 
 adict = {}
-for i, a, b, c in zip(pics_info_dplyed.Dominant_Response, pics_info_dplyed.Pic_Num, pics_info_dplyed.label, pics_info_dplyed.row_num):
+for i, a, b in zip(pics_info_dplyed.Dominant_Response, pics_info_dplyed.Pic_Num, pics_info_dplyed.label):
     adict[b.capitalize()] = (visual.ImageStim(win, size=[0.5,0.5], image = os.path.join("IPNP_Pictures", a + i + ".png")),
                             visual.TextBox(window = win, text = b.upper(), font_color=(-1,-1,-1), background_color = [1,1,1,.8], textgrid_shape=[len(b), 1]),
-                            b, i, c)
+                            b, i)
 
 def runTrial():
     frame_count = resp_frame_count = 0
@@ -101,8 +146,10 @@ def runTrial():
             start_recording = globalClock.getTime()
         elif frame_count > fix_duration:
             [trial_vals[i].draw() for i in range(2)]
+            print (globalClock.getTime())
             if hasattr(vpvkOff, 'event_offset') and vpvkOff.event_offset > 0:
                 resp_frame_count += 1
+                print (str(globalClock.getTime()) + "a")
             elif frame_count == timeout and vpvkOn.event_onset == 0:
                 vpvkOff.event_offset = "NA"
                 break
@@ -178,6 +225,7 @@ for trial_num, (trial_key, trial_vals) in enumerate(adict.items()):
     runTrial()
 mic_1.stop()    
 instr_list([thanks])
+
 
 thisExp.saveAsWideText(filename + '.csv')
 thisExp.saveAsPickle(filename) # https://psychopy.org/builder/settings.html#data-settings
