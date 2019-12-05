@@ -63,7 +63,7 @@ timeout = to_frames(timeout_input)
 resp_timeout_input = .5
 resp_timeout = to_frames(resp_timeout_input)
 
-mic_1 = microphone.AdvAudioCapture(name='mic_1', saveDir= filename + '.wav', stereo=False, chnl=0)
+mic_1 = microphone.AdvAudioCapture(name='mic_1', filename= filename + '.wav', stereo=False, chnl=0)
 
 pics_info = pd.read_csv('IPNP_spreadsheet.csv')
 
