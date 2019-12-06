@@ -214,8 +214,8 @@ def instr_list(thelist):
         frameN += 1
         win.flip()
 
-mic_1.record(sec=100000, block=False)                                          # sets an impossibly long time-out window so recording will last the whole experiment
 instr_list([inst1, inst2, inst3])
+mic_1.record(sec=100000, block=False)                                           # sets an impossibly long time-out window so recording will last the whole experiment
 globalClock = core.MonotonicClock()                                             # to track the time since experiment started
 for trial_num, (trial_key, trial_vals) in enumerate(adict.items()):
     if trial_num == prac_trials:
