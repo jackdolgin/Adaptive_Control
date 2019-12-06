@@ -33,7 +33,7 @@ logFile = logging.LogFile(filename + '.log', level = logging.EXP)               
 
 # Setup the Window
 win = visual.Window(
-    size=(1280, 800), fullscr=False, allowGUI=False,
+    size=(1280, 800), fullscr=True, allowGUI=False,
     monitor='testMonitor', color=[1,1,1], useFBO=True)
 
 expInfo['frameRate'] = win.getActualFrameRate()                                 # store frame rate of monitor
@@ -60,6 +60,8 @@ fix_duration_input = .5
 fix_duration = to_frames(fix_duration_input)
 timeout_input = 3 + fix_duration_input
 timeout = to_frames(timeout_input)
+timeout_min_input = 3 + fix_duration_input
+timeout_min = to_frames(timeout_min_input)
 resp_timeout_input = .5
 resp_timeout = to_frames(resp_timeout_input)
 
@@ -134,7 +136,7 @@ for i, a, b in zip(pics_info_dplyed.Dominant_Response, pics_info_dplyed.Pic_Num,
 def runTrial():
     frame_count = resp_frame_count = 0
     fix.setAutoDraw(True)
-    while resp_frame_count < resp_timeout:
+    while resp_frame_count < resp_timeout or frame_count < timeout_min:
         if event.getKeys(keyList = ["escape"]):
             mic_1.stop()
             core.quit()
@@ -146,10 +148,8 @@ def runTrial():
             start_recording = globalClock.getTime()
         elif frame_count > fix_duration:
             [trial_vals[i].draw() for i in range(2)]
-            print (globalClock.getTime())
             if hasattr(vpvkOff, 'event_offset') and vpvkOff.event_offset > 0:
                 resp_frame_count += 1
-                print (str(globalClock.getTime()) + "a")
             elif frame_count == timeout and vpvkOn.event_onset == 0:
                 vpvkOff.event_offset = "NA"
                 break
@@ -158,7 +158,7 @@ def runTrial():
     vpvkOff.stop()
     vpvkOn.stop()
 
-    for i in (('Trial', trial_num - pract_trials),
+    for i in (('Trial', trial_num - prac_trials),
                ('Picture_Identity', trial_vals[3]),
                ('Picture_Label', trial_vals[2]),
                ('Response_Time', vpvkOn.event_onset),
