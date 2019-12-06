@@ -39,7 +39,7 @@ win = visual.Window(
 expInfo['frameRate'] = win.getActualFrameRate()                                 # store frame rate of monitor
 
 first_congruency = random.choice(("congruent", "incongruent"))
-expInfo['first_congruecy'] = first_congruency
+expInfo['first_congruency'] = first_congruency
 blocks = 4
 prac_trials = 12
 pics_cap = 320
