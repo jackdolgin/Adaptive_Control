@@ -27,7 +27,8 @@ expInfo = {'participant':'','session':''}                                       
 if gui.DlgFromDict(dictionary=expInfo).OK == False:                             # creates popup at beginning of experiment that asks for participant number
     core.quit()                                                                 # says, if you hit escape/click cancel when that popup appears, then don't run the experiment; if this if statement didn't exist, experiment would run regardly of whether you hit escape/click cancel
 expInfo['date'] = data.getDateStr()                                             # add a simple timestamp
-filename = _thisDir + os.sep + u'data/%s/%s' % (expInfo['participant'], 'exp_data')    #creates data file name
+filelocation = _thisDir + os.sep + u'data/%s/%s' % (expInfo['participant'], 'exp_data')    #creates data file name
+filename = os.path.join(filelocation, 'exp_data') 
 thisExp = data.ExperimentHandler(extraInfo = expInfo, dataFileName = filename)
 logFile = logging.LogFile(filename + '.log', level = logging.EXP)               # save a log file for detail verbose info
 
@@ -65,7 +66,7 @@ timeout_min = to_frames(timeout_min_input)
 resp_timeout_input = .5
 resp_timeout = to_frames(resp_timeout_input)
 
-mic_1 = microphone.AdvAudioCapture(name='mic_1', filename= filename + '.wav', stereo=False, chnl=0)
+mic_1 = microphone.AdvAudioCapture(name='mic_1', filename = os.path.join(filelocation, 'audio','full_recording', 'full_recording.wav'), stereo=False, chnl=0)
 
 pics_info = pd.read_csv('IPNP_spreadsheet.csv')
 
