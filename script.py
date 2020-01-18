@@ -28,7 +28,7 @@ if gui.DlgFromDict(dictionary=expInfo).OK == False:                             
     core.quit()                                                                 # says, if you hit escape/click cancel when that popup appears, then don't run the experiment; if this if statement didn't exist, experiment would run regardly of whether you hit escape/click cancel
 expInfo['date'] = data.getDateStr()                                             # add a simple timestamp
 filelocation = _thisDir + os.sep + u'data/%s/%s' % (expInfo['participant'], 'exp_data')    #creates data file name
-filename = os.path.join(filelocation, 'exp_data') 
+filename = os.path.join(filelocation, 'exp_data')
 thisExp = data.ExperimentHandler(extraInfo = expInfo, dataFileName = filename)
 logFile = logging.LogFile(filename + '.log', level = logging.EXP)               # save a log file for detail verbose info
 
@@ -39,19 +39,17 @@ win = visual.Window(
 
 expInfo['frameRate'] = win.getActualFrameRate()                                 # store frame rate of monitor
 
-first_congruency = random.choice(("congruent", "incongruent"))
-expInfo['first_congruency'] = first_congruency
 blocks = 4
-prac_trials = 12
-pics_cap = 320
-block_trials = pics_cap / blocks
-all_trials = prac_trials + pics_cap
-cong_split = .5
-block_split = .75
-block_split_remainder = 1 - block_split
-new_step = 1 / fractions.gcd(block_split, block_split_remainder)
-block_majority_trials = block_trials * block_split
-block_minority_trials = block_trials * block_split_remainder
+trials_main_exp = 320
+trials_per_block = trials_main_exp / blocks
+trials_prac = 12
+trials_total = trials_prac + trials_main_exp
+prcnt_cngrt_trials_overall = .5                                                                 # percent of congruent trials in overall experiment
+block_trials_mjrty_prct = .75                                                               # percent of congruent or incongruent trials in overall block (in terms of whatever is greater, so this number is always >= .5)
+block_trials_mnrty_prct = 1 - block_trials_mjrty_prct                                         # lesser percent in the block
+trials_per_block_mjrty = trials_per_block * block_trials_mjrty_prct
+trials_per_block_mnrty = trials_per_block * block_trials_mnrty_prct
+new_step = fractions.gcd(block_trials_mjrty_prct, block_trials_mnrty_prct)
 
 framelength = win.monitorFramePeriod
 def to_frames(t):                                                               # Converts time to frames accounting for the computer's refresh rate (aka framelength); input is the desired time on screen, but the ouput is the closest multiple of the refresh rate
@@ -60,73 +58,74 @@ def to_frames(t):                                                               
 fix_duration_input = .5
 fix_duration = to_frames(fix_duration_input)
 timeout_input = 3 + fix_duration_input
-timeout = to_frames(timeout_input)
+timeout = to_frames(timeout_input)                                              # how long to keep waiting for a voice response before moving on to next trial
 timeout_min_input = 3 + fix_duration_input
 timeout_min = to_frames(timeout_min_input)
 resp_timeout_input = .5
 resp_timeout = to_frames(resp_timeout_input)
 
+
+##-----------------------------STIMULI LOADING--------------------------------##
+
+fix = visual.TextStim(win=win, name = 'fix', color='black',text='+')            # create fixation cross
+
 mic_1 = microphone.AdvAudioCapture(name='mic_1', filename = os.path.join(filelocation, 'audio','full_recording', 'full_recording.wav'), stereo=False, chnl=0)
 
-pics_info = pd.read_csv('IPNP_spreadsheet.csv')
+pics_info = pd.read_csv('IPNP_spreadsheet.csv')                                 # read in the csv listing the different image names and relevant info like agreement factor
 
-allpics = os.listdir("IPNP_Pictures")
+allpics = os.listdir("IPNP_Pictures")                                           # directory of all the stimuli (note- only about half the images are available to anyone; the other half can be acquired by contacting ipnp@crl.ucsd.edu and jacobsen@hsu-hh.de; see more at https://crl.ucsd.edu/experiments/ipnp/method/getpics/getpics.html)
 
 def filter_pics(series_element):
     return any(s.startswith(series_element) for s in allpics)
 
-@make_symbolic
-def to_ceil(x):
+@make_symbolic                                                                  # this line is required to apply the function to column name like dplyr, which as a reminder also uses unquoted symbols for column names
+def to_ceil(x):                                                                 # round to ceiling; this is outside the dfply chain because for whatever reason dfply doesn't like numpy
     return np.ceil(x)
 
-@make_symbolic
-def to_floor(x):
+@make_symbolic                                                                  # ditto same line in the `to_ceil` function
+def to_floor(x):                                                                # round to floor; like above, this is outside the dfply chain because for whatever reason dfply doesn't like numpy
     return np.floor(x)
 
 pics_info_dplyed0 = (pics_info >>
-    mask(X.Pic_Num.apply(filter_pics)) >>
-    arrange(X.Agreement_Factor, X.Alternative_Names, X.Mean_RT_Dominant) >>
-    head(int(pics_cap * (1 + cong_split))) >>
-    sample(frac = 1) >>
-    mutate(Lead_Dominant_Response = lead(X.Dominant_Response, int(pics_cap * cong_split))) >>
-    mutate(row_num_setup = 1) >>
-    mutate(row_num = row_number(X.row_num_setup)) >>
-    mutate(congruency = if_else(X.row_num <= pics_cap * cong_split, "congruent", "incongruent")) >>
-    mutate(label = if_else(X.congruency == "congruent", X.Dominant_Response, X.Lead_Dominant_Response)) >>
-    head(pics_cap) >>
+    mask(X.Pic_Num.apply(filter_pics)) >>                                       # specifies all the rows in the above csv that we want to work with based on their image column
+    arrange(X.Agreement_Factor, X.Alternative_Names, X.Mean_RT_Dominant) >>     # sorts remaining rows in csv by these columns, which indicate how difficult the images are to identify
+    head(int(trials_main_exp * (1 + prcnt_cngrt_trials_overall))) >>            # keep only the top remaining rows in the csv so that the number of rows equals the number of trials + the number of incongruent trials
+    sample(frac = 1) >>                                                         # randomize the remaining rows
+    mutate(Lead_Dominant_Response = lead(X.Dominant_Response, int(trials_main_exp * (1 - prcnt_cngrt_trials_overall)))) >> # assign potential incongruent word, which is just the Dominant Response trials_main_exp * (1 - prcnt_cngrt_trials_overall) rows below
+    mutate(row_num_setup = 1) >>                                                # creates new column (1 is just a filler number)...
+    mutate(row_num = row_number(X.row_num_setup)) >>                            # ...which then gets converted into row_number rankings (apparently can't just create this new column of row numbers in just one line)
+    mutate(congruency = if_else(X.row_num <= trials_main_exp * prcnt_cngrt_trials_overall, "congruent", "incongruent")) >> # if the row number is <= trials_main_exp * prcnt_cngrt_trials_overall, then it's a congruent trial; otherwise it's incongruent
+    head(trials_main_exp) >>                                                    # now that we've extracted the bottom rows just for `Lead_Dominant_Response`, we can dispose of them
+    mutate(label = if_else(X.congruency == "congruent", X.Dominant_Response, X.Lead_Dominant_Response)) >> # sets up the word that will be overlaid on each trial
     group_by(X.congruency) >>
-    mutate(cong_order = dense_rank(X.row_num)) >>
-    mutate(cong_order_clustered = to_ceil(X.cong_order / block_minority_trials)) >>
-    mutate(sumin = to_floor(X.cong_order_clustered / new_step)) >>
-    mutate(new_row_n = if_else(X.congruency == "congruent",
-                        X.cong_order + block_trials * (to_floor(X.cong_order_clustered / new_step)),
-                        X.cong_order + block_majority_trials + block_trials * (to_floor((X.cong_order_clustered - 1) / new_step)))) >>
+    mutate(row_num_by_cngrcy = dense_rank(X.row_num)) >>                        # create new row numbers separately for congruent and incongruent trials
+    mutate(row_num_by_cngrcy_grouped = to_ceil(X.row_num_by_cngrcy / trials_per_block_mnrty)) >> # group congruency's row numbers by how many appearances it would make in a minority block (e.g. every .25 * size of block); should yield resulting rows such as 1, 2, 3, etc...
+    # mutate(sumin = to_floor(X.row_num_by_cngrcy_grouped * new_step)) >>
+    mutate(new_row_n = if_else(X.congruency == "congruent",                     # this ifelse statement is to take the grouped rows numbers from congruent and incongruent conditions and spread them out so there is only one row value between each of the two groups, as opposed to each group sharing each number once; gets accomplished by adding to the grouped row number...
+                        X.row_num_by_cngrcy + trials_per_block * (to_floor(X.row_num_by_cngrcy_grouped * new_step)), #...specifically, add to the grouped row number with a multiple of `block_size` (e.g. row number + 0*80, + 1*80, + 2*80); note, the max size of `to_floor`'s output is trials_main_exp * prcnt_cngrt_trials_overall larger than its current row number;
+                        X.row_num_by_cngrcy + trials_per_block_mjrty + trials_per_block * (to_floor((X.row_num_by_cngrcy_grouped - 1) * new_step)))) >>
     ungroup() >>
     arrange(X.new_row_n) >>
-    mutate(block = to_ceil(X.new_row_n / block_trials)) >>
+    mutate(block = to_ceil(X.new_row_n / trials_per_block)) >>
     group_by(X.block) >>
     sample(frac = 1)
     )
-    
+
 
 pics_info_dplyed = (pics_info >>
     mask(X.Pic_Num.apply(filter_pics)) >>
     arrange(X.Agreement_Factor, X.Alternative_Names, X.Mean_RT_Dominant) >>
-    tail(int(prac_trials * (1 + cong_split))) >>
+    tail(int(trials_prac * (1 + prcnt_cngrt_trials_overall))) >>
     sample(frac = 1) >>
-    mutate(Lead_Dominant_Response = lead(X.Dominant_Response, int(prac_trials * cong_split))) >>
+    mutate(Lead_Dominant_Response = lead(X.Dominant_Response, int(trials_prac * prcnt_cngrt_trials_overall))) >>
     mutate(row_num_setup = 1) >>
     mutate(row_num = row_number(X.row_num_setup)) >>
-    mutate(congruency = if_else(X.row_num <= prac_trials * cong_split, "congruent", "incongruent")) >>
+    mutate(congruency = if_else(X.row_num <= trials_prac * prcnt_cngrt_trials_overall, "congruent", "incongruent")) >>
     mutate(label = if_else(X.congruency == "congruent", X.Dominant_Response, X.Lead_Dominant_Response)) >>
-    head(prac_trials) >>
+    head(trials_prac) >>
     sample(frac = 1) >>
     bind_rows(pics_info_dplyed0, join = 'inner')
 )
-    
-
-fix = visual.TextStim(win=win, name = 'fix', color='black',text='+')
-
 
 adict = {}
 for i, a, b in zip(pics_info_dplyed.Dominant_Response, pics_info_dplyed.Pic_Num, pics_info_dplyed.label):
@@ -136,30 +135,30 @@ for i, a, b in zip(pics_info_dplyed.Dominant_Response, pics_info_dplyed.Pic_Num,
 
 def runTrial():
     frame_count = resp_frame_count = 0
-    fix.setAutoDraw(True)
+    fix.setAutoDraw(True)                                                       # start drawing fixation at the outset of the trial since it's on the screen at the beginning of all trials
     while resp_frame_count < resp_timeout or frame_count < timeout_min:
-        if event.getKeys(keyList = ["escape"]):
+        if event.getKeys(keyList = ["escape"]):                                 # quit out of task if escape gets pressed
             mic_1.stop()
             core.quit()
-        if frame_count == fix_duration:
-            fix.setAutoDraw(False)
-            vpvkOff = vk.OffsetVoiceKey()
-            vpvkOn = vk.OnsetVoiceKey(sec = timeout_input)
+        if frame_count == fix_duration:                                         # after certain between-trial delay has elapsed...
+            fix.setAutoDraw(False)                                              # ...remove fixation cross and start recording voice
+            vpvkOff = vk.OffsetVoiceKey()                                       # tracks voice offset
+            vpvkOn = vk.OnsetVoiceKey(sec = timeout_input)                      # tracks voice onset
             [i.start() for i in (vpvkOff, vpvkOn)]
-            start_recording = globalClock.getTime()
-        elif frame_count > fix_duration:
-            [trial_vals[i].draw() for i in range(2)]
-            if hasattr(vpvkOff, 'event_offset') and vpvkOff.event_offset > 0:
-                resp_frame_count += 1
-            elif frame_count == timeout and vpvkOn.event_onset == 0:
-                vpvkOff.event_offset = "NA"
-                break
+            start_recording = globalClock.getTime()                             # timer used as reference for voice onset and offset
+        elif frame_count > fix_duration:                                        # after we've started recording...
+            [trial_vals[i].draw() for i in range(2)]                            # keep re-drawing the stimuli until otherwise specified
+            if hasattr(vpvkOff, 'event_offset') and vpvkOff.event_offset > 0:   # if voice offset has occured...
+                resp_frame_count += 1                                           # ...start timing how long it's been since speaking has ended; this is so we don't end trial at the exact moment talking ends and allows for someone to keep talking for a little bit beyond a potentially-early recording stoppage
+            elif frame_count == timeout and vpvkOn.event_onset == 0:            # if we've reached the max trial time and speaking still hasn't been picked up...
+                vpvkOff.event_offset = "NA"                                     # ...set event offset value to NA and...
+                break                                                           # ...end trial
         frame_count += 1
         win.flip()
     vpvkOff.stop()
     vpvkOn.stop()
 
-    for i in (('Trial', trial_num - prac_trials),
+    for i in (('Trial', trial_num - trials_prac),                               # means that the first experimental trials ends up with a value of 0
                ('Picture_Identity', trial_vals[3]),
                ('Picture_Label', trial_vals[2]),
                ('Response_Time', vpvkOn.event_onset),
@@ -179,20 +178,20 @@ def create_inst(t):
 def continue_goback(s):
     return "\n\nPress space to " + s + " or \"B\" to go back."
 
-inst1 = create_inst("Welcome to the study! You will be completing a voice response task, meaning quite literally you'll be verbally responding to drawings you see.\n\nPress space to continue.")
+inst1 = create_inst("Welcome to the study! It's a pretty straight-forward design. You'll repeatedly see images that are overlaid with a word, and every time your job is to say aloud the identity of the picture (regardless of the word overlaid on top).\n\nPress space to continue.")
 
-inst2 = create_inst("On every trial you will see a drawing and an overlaid word. Some of the time the drawing will match the word, the rest of the time they will conflict. Your task is to always name the drawing (as opposed to the word). That's it!" + continue_goback("continue"))
+inst2 = create_inst("One important part of the study is that you avoid using filler words like 'um'. This will significantly help the experimenter when he analyzes your data." + continue_goback("continue"))
 
-inst3 = create_inst("The task moves pretty quickly, so to get the hang of it you'll go through the following practice trials. We ask that when you name the image, you deliver your response into the microphone." + continue_goback("begin"))
+inst3 = create_inst("The task moves pretty fast, so you'll start off with " + str(trials_prac) + " to get the hang of it, before advancing to the main portion of the experiment. Please do let the experiment know either now or at any time if you have any questions."+ continue_goback("begin"))
 
-welcmmain = create_inst("Welcome to the beginning of the main experiment. This experiment will last about 20 minutes. It will feature trials split among " + str(blocks - 1) + u" breaks (which will be self-timed, so you can break as long as you’d like).\n\nPress space to continue.".encode('utf-8').decode('utf-8'))
+welcmmain = create_inst("Welcome to the main portion of the experiment! It'll work just like the practice trials, only there will be many more trials. The trials will be split among " + str(blocks - 1) + u" breaks, and the whole study should total no more than 25 minutes (probably less).\n\nPress space to continue.".encode('utf-8').decode('utf-8'))
 
-main_prev = create_inst("The forthcoming trials will work just like the practice trials: a drawing and a word will appear, and you are tasked with verbally naming the drawing." + continue_goback("begin"))
+main_prev = create_inst("Again, please do avoid using filler words if you can. Let the experiment know if you have any questions, or otherwise, press the spacebar to begin!")
 
 def break_message(trial_count):
-    return create_inst("You've reached break " + str(int((trial_count - prac_trials) / (pics_cap / blocks))) + " of " + str(blocks - 1) + ". This break is self-timed, so whenever you're ready press spacebar to continue the study.")
+    return create_inst("You've reached break " + str(int((trial_count - trials_prac) / (trials_main_exp / blocks))) + " of " + str(blocks - 1) + ". This break is self-timed, so whenever you're ready press spacebar to continue the study.")
 
-thanks = create_inst("Thank you so much for your participation! Let the experimenter know that you're finished, and he'll set up the 1-minute, post-study demographic survey.")
+thanks = create_inst("Thank you so much for your participation! Let the experimenter know that you're finished, and he'll set up the 1-minute, post-study demographic survey on this computer.")
 
 def instr_list(thelist):
     advance = 0
@@ -219,12 +218,12 @@ instr_list([inst1, inst2, inst3])
 mic_1.record(sec=100000, block=False)                                           # sets an impossibly long time-out window so recording will last the whole experiment
 globalClock = core.MonotonicClock()                                             # to track the time since experiment started
 for trial_num, (trial_key, trial_vals) in enumerate(adict.items()):
-    if trial_num == prac_trials:
-        instr_list([welcmmain, main_prev])
-    elif (trial_num - prac_trials) % (pics_cap / blocks) == 0 and trial_num < all_trials:
+    if trial_num == trials_prac:                                                # when practice trials are over...
+        instr_list([welcmmain, main_prev])                                      # ...run the instructions for the main task
+    elif (trial_num - trials_prac) % (trials_main_exp / blocks) == 0 and trial_num < trials_total:
         instr_list([break_message(trial_num)])
     runTrial()
-mic_1.stop()    
+mic_1.stop()
 instr_list([thanks])
 
 
