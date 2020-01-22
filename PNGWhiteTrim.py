@@ -15,10 +15,10 @@ folderName = os.path.join(_thisDir, "IPNP_Pictures")
 maxsize = 300
 
 filePaths = glob.glob(folderName + "/*.png")
-print (filePaths)
+
 newfolderName = os.path.join(_thisDir, "IPNP_Pictures_new")
 
-#os.mkdir(newfolderName)
+os.mkdir(newfolderName)
 
 for filePath in filePaths:
     image = Image.open(filePath)
