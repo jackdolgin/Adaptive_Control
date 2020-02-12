@@ -27,20 +27,22 @@ expInfo = {'participant':'','session':''}                                       
 if gui.DlgFromDict(dictionary=expInfo).OK == False:                             # creates popup at beginning of experiment that asks for participant number
     core.quit()                                                                 # says, if you hit escape/click cancel when that popup appears, then don't run the experiment; if this if statement didn't exist, experiment would run regardly of whether you hit escape/click cancel
 expInfo['date'] = data.getDateStr()                                             # add a simple timestamp
-filelocation = _thisDir + os.sep + u'data/%s/%s' % (expInfo['participant'], 'exp_data')    #creates data file name
+filelocation = _thisDir + os.sep + u'data/%s' % (expInfo['participant'])    #creates data file name
 filename = os.path.join(filelocation, 'exp_data')
 thisExp = data.ExperimentHandler(extraInfo = expInfo, dataFileName = filename)
 logFile = logging.LogFile(filename + '.log', level = logging.EXP)               # save a log file for detail verbose info
 
 # Setup the Window
 win = visual.Window(
-    size=(1280, 800), fullscr=True, allowGUI=False,
+    size=(1280, 800), fullscr=False, allowGUI=False,
     monitor='testMonitor', color=[1,1,1], useFBO=True)
 
 expInfo['frameRate'] = win.getActualFrameRate()                                 # store frame rate of monitor
 
+first_congruency = random.choice(("congruent", "incongruent"))
+expInfo['first_congruency'] = first_congruency
 blocks = 4
-trials_main_exp = 320
+trials_main_exp = 296
 trials_per_block = trials_main_exp / blocks
 trials_prac = 12
 trials_total = trials_prac + trials_main_exp
@@ -69,11 +71,14 @@ resp_timeout = to_frames(resp_timeout_input)
 
 fix = visual.TextStim(win=win, name = 'fix', color='black',text='+')            # create fixation cross
 
-mic_1 = microphone.AdvAudioCapture(name='mic_1', filename = os.path.join(filelocation, 'audio','full_recording', 'full_recording.wav'), stereo=False, chnl=0)
+recordlocation = _thisDir + os.sep + u'data/%s/%s/%s' % (expInfo['participant'], 'audio', 'full_recording') 
+os.makedirs(recordlocation)
+mic_1 = microphone.AdvAudioCapture(name = 'mic_1', filename = os.path.join(recordlocation, 'full_recording') + '.wav', stereo=False, chnl=0)
 
 pics_info = pd.read_csv('IPNP_spreadsheet.csv')                                 # read in the csv listing the different image names and relevant info like agreement factor
 
-allpics = os.listdir("IPNP_Pictures")                                           # directory of all the stimuli (note- only about half the images are available to anyone; the other half can be acquired by contacting ipnp@crl.ucsd.edu and jacobsen@hsu-hh.de; see more at https://crl.ucsd.edu/experiments/ipnp/method/getpics/getpics.html)
+pics_dir = "IPNP_Pictures_new"                                           # directory of all the stimuli (note- only about half the images are available to anyone; the other half can be acquired by contacting ipnp@crl.ucsd.edu and jacobsen@hsu-hh.de; see more at https://crl.ucsd.edu/experiments/ipnp/method/getpics/getpics.html)
+allpics = os.listdir(pics_dir)
 
 def filter_pics(series_element):
     return any(s.startswith(series_element) for s in allpics)
@@ -87,8 +92,8 @@ def to_floor(x):                                                                
     return np.floor(x)
 
 pics_info_dplyed0 = (pics_info >>
-    mask(X.Pic_Num.apply(filter_pics)) >>                                       # specifies all the rows in the above csv that we want to work with based on their image column
-    arrange(X.Agreement_Factor, X.Alternative_Names, X.Mean_RT_Dominant) >>     # sorts remaining rows in csv by these columns, which indicate how difficult the images are to identify
+    mask(X.Pic_Num.apply(filter_pics), X.Keep) >>                                       # specifies all the rows in the above csv that we want to work with based on their image column
+    arrange(X.Mean_RT_All) >>     # sorts remaining rows in csv by these columns, which indicate how difficult the images are to identify
     head(int(trials_main_exp * (1 + prcnt_cngrt_trials_overall))) >>            # keep only the top remaining rows in the csv so that the number of rows equals the number of trials + the number of incongruent trials
     sample(frac = 1) >>                                                         # randomize the remaining rows
     mutate(Lead_Dominant_Response = lead(X.Dominant_Response, int(trials_main_exp * (1 - prcnt_cngrt_trials_overall)))) >> # assign potential incongruent word, which is just the Dominant Response trials_main_exp * (1 - prcnt_cngrt_trials_overall) rows below
@@ -101,7 +106,7 @@ pics_info_dplyed0 = (pics_info >>
     mutate(row_num_by_cngrcy = dense_rank(X.row_num)) >>                        # create new row numbers separately for congruent and incongruent trials
     mutate(row_num_by_cngrcy_grouped = to_ceil(X.row_num_by_cngrcy / trials_per_block_mnrty)) >> # group congruency's row numbers by how many appearances it would make in a minority block (e.g. every .25 * size of block); should yield resulting rows such as 1, 2, 3, etc...
     # mutate(sumin = to_floor(X.row_num_by_cngrcy_grouped * new_step)) >>
-    mutate(new_row_n = if_else(X.congruency == "congruent",                     # this ifelse statement is to take the grouped rows numbers from congruent and incongruent conditions and spread them out so there is only one row value between each of the two groups, as opposed to each group sharing each number once; gets accomplished by adding to the grouped row number...
+    mutate(new_row_n = if_else(X.congruency == first_congruency,                     # this ifelse statement is to take the grouped rows numbers from congruent and incongruent conditions and spread them out so there is only one row value between each of the two groups, as opposed to each group sharing each number once; gets accomplished by adding to the grouped row number...
                         X.row_num_by_cngrcy + trials_per_block * (to_floor(X.row_num_by_cngrcy_grouped * new_step)), #...specifically, add to the grouped row number with a multiple of `block_size` (e.g. row number + 0*80, + 1*80, + 2*80); note, the max size of `to_floor`'s output is trials_main_exp * prcnt_cngrt_trials_overall larger than its current row number;
                         X.row_num_by_cngrcy + trials_per_block_mjrty + trials_per_block * (to_floor((X.row_num_by_cngrcy_grouped - 1) * new_step)))) >>
     ungroup() >>
@@ -113,8 +118,8 @@ pics_info_dplyed0 = (pics_info >>
 
 
 pics_info_dplyed = (pics_info >>
-    mask(X.Pic_Num.apply(filter_pics)) >>
-    arrange(X.Agreement_Factor, X.Alternative_Names, X.Mean_RT_Dominant) >>
+    mask(X.Pic_Num.apply(filter_pics), X.Keep) >>
+    arrange(X.Mean_RT_All) >>
     tail(int(trials_prac * (1 + prcnt_cngrt_trials_overall))) >>
     sample(frac = 1) >>
     mutate(Lead_Dominant_Response = lead(X.Dominant_Response, int(trials_prac * prcnt_cngrt_trials_overall))) >>
@@ -129,7 +134,8 @@ pics_info_dplyed = (pics_info >>
 
 adict = {}
 for i, a, b in zip(pics_info_dplyed.Dominant_Response, pics_info_dplyed.Pic_Num, pics_info_dplyed.label):
-    adict[b.capitalize()] = (visual.ImageStim(win, size=[0.5,0.5], image = os.path.join("IPNP_Pictures", a + i + ".png")),
+#    adict[b.capitalize()] = (visual.ImageStim(win, size=[0.5,0.5], image = os.path.join(pics_dir, a + i + ".png")),
+    adict[b.capitalize()] = (visual.ImageStim(win, image = os.path.join(pics_dir, a + i + ".png")),
                             visual.TextBox(window = win, text = b.upper(), font_color=(-1,-1,-1), background_color = [1,1,1,.8], textgrid_shape=[len(b), 1]),
                             b, i)
 
@@ -140,6 +146,8 @@ def runTrial():
         if event.getKeys(keyList = ["escape"]):                                 # quit out of task if escape gets pressed
             mic_1.stop()
             core.quit()
+#        if frame_count < fix_duration:
+#            while 
         if frame_count == fix_duration:                                         # after certain between-trial delay has elapsed...
             fix.setAutoDraw(False)                                              # ...remove fixation cross and start recording voice
             vpvkOff = vk.OffsetVoiceKey()                                       # tracks voice offset
@@ -182,7 +190,7 @@ inst1 = create_inst("Welcome to the study! It's a pretty straight-forward design
 
 inst2 = create_inst("One important part of the study is that you avoid using filler words like 'um'. This will significantly help the experimenter when he analyzes your data." + continue_goback("continue"))
 
-inst3 = create_inst("The task moves pretty fast, so you'll start off with " + str(trials_prac) + " to get the hang of it, before advancing to the main portion of the experiment. Please do let the experiment know either now or at any time if you have any questions."+ continue_goback("begin"))
+inst3 = create_inst("The task moves pretty fast, so you'll start off with " + str(trials_prac) + " trials to get the hang of it, before advancing to the main portion of the experiment. Please do let the experiment know either now or at any time if you have any questions."+ continue_goback("begin"))
 
 welcmmain = create_inst("Welcome to the main portion of the experiment! It'll work just like the practice trials, only there will be many more trials. The trials will be split among " + str(blocks - 1) + u" breaks, and the whole study should total no more than 25 minutes (probably less).\n\nPress space to continue.".encode('utf-8').decode('utf-8'))
 
