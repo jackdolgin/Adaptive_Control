@@ -42,11 +42,15 @@ expInfo['frameRate'] = win.getActualFrameRate()                                 
 first_congruency = random.choice(("congruent", "incongruent"))
 expInfo['first_congruency'] = first_congruency
 blocks = 4
-trials_main_exp = 296
+prcnt_icngrt_trials_overall = .5                                                                 # percent of congruent trials in overall experiment
+trials_multiple = blocks * (1 + prcnt_icngrt_trials_overall)
+pics_info = (pd.read_csv('IPNP_spreadsheet.csv') >>                             # read in the csv listing the different image names and relevant info like agreement factor
+            mask(X.Keep))            
+possible_pics = math.floor(len(pics_info) * 1.0 / trials_multiple) * trials_multiple
+trials_main_exp = possible_pics / (1 + prcnt_icngrt_trials_overall)
 trials_per_block = trials_main_exp / blocks
 trials_prac = 12
 trials_total = trials_prac + trials_main_exp
-prcnt_cngrt_trials_overall = .5                                                                 # percent of congruent trials in overall experiment
 block_trials_mjrty_prct = .75                                                               # percent of congruent or incongruent trials in overall block (in terms of whatever is greater, so this number is always >= .5)
 block_trials_mnrty_prct = 1 - block_trials_mjrty_prct                                         # lesser percent in the block
 trials_per_block_mjrty = trials_per_block * block_trials_mjrty_prct
@@ -75,13 +79,8 @@ recordlocation = _thisDir + os.sep + u'data/%s/%s/%s' % (expInfo['participant'],
 os.makedirs(recordlocation)
 mic_1 = microphone.AdvAudioCapture(name = 'mic_1', filename = os.path.join(recordlocation, 'full_recording') + '.wav', stereo=False, chnl=0)
 
-pics_info = pd.read_csv('IPNP_spreadsheet.csv')                                 # read in the csv listing the different image names and relevant info like agreement factor
-
 pics_dir = "IPNP_Pictures_new"                                           # directory of all the stimuli (note- only about half the images are available to anyone; the other half can be acquired by contacting ipnp@crl.ucsd.edu and jacobsen@hsu-hh.de; see more at https://crl.ucsd.edu/experiments/ipnp/method/getpics/getpics.html)
 allpics = os.listdir(pics_dir)
-
-def filter_pics(series_element):
-    return any(s.startswith(series_element) for s in allpics)
 
 @make_symbolic                                                                  # this line is required to apply the function to column name like dplyr, which as a reminder also uses unquoted symbols for column names
 def to_ceil(x):                                                                 # round to ceiling; this is outside the dfply chain because for whatever reason dfply doesn't like numpy
@@ -92,14 +91,13 @@ def to_floor(x):                                                                
     return np.floor(x)
 
 pics_info_dplyed0 = (pics_info >>
-    mask(X.Pic_Num.apply(filter_pics), X.Keep) >>                                       # specifies all the rows in the above csv that we want to work with based on their image column
     arrange(X.Mean_RT_All) >>     # sorts remaining rows in csv by these columns, which indicate how difficult the images are to identify
-    head(int(trials_main_exp * (1 + prcnt_cngrt_trials_overall))) >>            # keep only the top remaining rows in the csv so that the number of rows equals the number of trials + the number of incongruent trials
+    head(int(trials_main_exp * (1 + prcnt_icngrt_trials_overall))) >>            # keep only the top remaining rows in the csv so that the number of rows equals the number of trials + the number of incongruent trials
     sample(frac = 1) >>                                                         # randomize the remaining rows
-    mutate(Lead_Dominant_Response = lead(X.Dominant_Response, int(trials_main_exp * (1 - prcnt_cngrt_trials_overall)))) >> # assign potential incongruent word, which is just the Dominant Response trials_main_exp * (1 - prcnt_cngrt_trials_overall) rows below
+    mutate(Lead_Dominant_Response = lead(X.Dominant_Response, int(trials_main_exp * (1 - prcnt_icngrt_trials_overall)))) >> # assign potential incongruent word, which is just the Dominant Response trials_main_exp * (1 - prcnt_icngrt_trials_overall) rows below
     mutate(row_num_setup = 1) >>                                                # creates new column (1 is just a filler number)...
     mutate(row_num = row_number(X.row_num_setup)) >>                            # ...which then gets converted into row_number rankings (apparently can't just create this new column of row numbers in just one line)
-    mutate(congruency = if_else(X.row_num <= trials_main_exp * prcnt_cngrt_trials_overall, "congruent", "incongruent")) >> # if the row number is <= trials_main_exp * prcnt_cngrt_trials_overall, then it's a congruent trial; otherwise it's incongruent
+    mutate(congruency = if_else(X.row_num <= trials_main_exp * prcnt_icngrt_trials_overall, "congruent", "incongruent")) >> # if the row number is <= trials_main_exp * prcnt_icngrt_trials_overall, then it's a congruent trial; otherwise it's incongruent
     head(trials_main_exp) >>                                                    # now that we've extracted the bottom rows just for `Lead_Dominant_Response`, we can dispose of them
     mutate(label = if_else(X.congruency == "congruent", X.Dominant_Response, X.Lead_Dominant_Response)) >> # sets up the word that will be overlaid on each trial
     group_by(X.congruency) >>
@@ -107,7 +105,7 @@ pics_info_dplyed0 = (pics_info >>
     mutate(row_num_by_cngrcy_grouped = to_ceil(X.row_num_by_cngrcy / trials_per_block_mnrty)) >> # group congruency's row numbers by how many appearances it would make in a minority block (e.g. every .25 * size of block); should yield resulting rows such as 1, 2, 3, etc...
     # mutate(sumin = to_floor(X.row_num_by_cngrcy_grouped * new_step)) >>
     mutate(new_row_n = if_else(X.congruency == first_congruency,                     # this ifelse statement is to take the grouped rows numbers from congruent and incongruent conditions and spread them out so there is only one row value between each of the two groups, as opposed to each group sharing each number once; gets accomplished by adding to the grouped row number...
-                        X.row_num_by_cngrcy + trials_per_block * (to_floor(X.row_num_by_cngrcy_grouped * new_step)), #...specifically, add to the grouped row number with a multiple of `block_size` (e.g. row number + 0*80, + 1*80, + 2*80); note, the max size of `to_floor`'s output is trials_main_exp * prcnt_cngrt_trials_overall larger than its current row number;
+                        X.row_num_by_cngrcy + trials_per_block * (to_floor(X.row_num_by_cngrcy_grouped * new_step)), #...specifically, add to the grouped row number with a multiple of `block_size` (e.g. row number + 0*80, + 1*80, + 2*80); note, the max size of `to_floor`'s output is trials_main_exp * prcnt_icngrt_trials_overall larger than its current row number;
                         X.row_num_by_cngrcy + trials_per_block_mjrty + trials_per_block * (to_floor((X.row_num_by_cngrcy_grouped - 1) * new_step)))) >>
     ungroup() >>
     arrange(X.new_row_n) >>
@@ -118,14 +116,13 @@ pics_info_dplyed0 = (pics_info >>
 
 
 pics_info_dplyed = (pics_info >>
-    mask(X.Pic_Num.apply(filter_pics), X.Keep) >>
     arrange(X.Mean_RT_All) >>
-    tail(int(trials_prac * (1 + prcnt_cngrt_trials_overall))) >>
+    tail(int(trials_prac * (1 + prcnt_icngrt_trials_overall))) >>
     sample(frac = 1) >>
-    mutate(Lead_Dominant_Response = lead(X.Dominant_Response, int(trials_prac * prcnt_cngrt_trials_overall))) >>
+    mutate(Lead_Dominant_Response = lead(X.Dominant_Response, int(trials_prac * prcnt_icngrt_trials_overall))) >>
     mutate(row_num_setup = 1) >>
     mutate(row_num = row_number(X.row_num_setup)) >>
-    mutate(congruency = if_else(X.row_num <= trials_prac * prcnt_cngrt_trials_overall, "congruent", "incongruent")) >>
+    mutate(congruency = if_else(X.row_num <= trials_prac * prcnt_icngrt_trials_overall, "congruent", "incongruent")) >>
     mutate(label = if_else(X.congruency == "congruent", X.Dominant_Response, X.Lead_Dominant_Response)) >>
     head(trials_prac) >>
     sample(frac = 1) >>
