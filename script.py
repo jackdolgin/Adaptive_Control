@@ -38,53 +38,10 @@ task = int(expInfo['session'])
 
 # Setup the Window
 win = visual.Window(
-    size=(1280, 800), fullscr=False, allowGUI=False,
+    size=(1280, 800), fullscr=True, allowGUI=False,
     monitor='testMonitor', color=[1,1,1], useFBO=True)
 
 expInfo['frameRate'] = win.getActualFrameRate()                                 # store frame rate of monitor
-
-first_congruency = random.choice(("congruent", "incongruent"))
-expInfo['first_congruency'] = first_congruency
-
-blocks = 4
-if task == 1 or task == 2:
-    overall_incongruency = .5
-elif task == 0:
-    overall_incongruency = 0
-
-blocks_cong_divvy = blocks * (1 + overall_incongruency)
-
-pics_csv = (pd.read_csv('IPNP_spreadsheet.csv') >>                             # read in the csv listing the different image names and relevant info like agreement factor
-            mask(X.Keep) >>
-            arrange(X.Mean_RT_All))     # sorts remaining rows in csv by these columns, which indicate how difficult the images are to identify
-
-imported_num_of_pics = len(pics_csv)
-desired_main_trials = 500
-trials_prac = 12
-total_necessary_pics = desired_main_trials * (1 + overall_incongruency) + trials_prac
-
-if total_necessary_pics > imported_num_of_pics:
-    total_necessary_pics = imported_num_of_pics
-
-total_necessary_main_pics = total_necessary_pics - trials_prac
-
-used_pics_main = int(math.floor(1.0 * total_necessary_main_pics / blocks_cong_divvy) * blocks_cong_divvy)
-main_trials = used_pics_main // (1 + overall_incongruency)
-
-trials_per_block = main_trials // blocks
-
-trials_total = trials_prac + main_trials
-greater_gruency = .75
-lesser_gruency = .25
-greater_per_block = int(greater_gruency * trials_per_block)
-lesser_per_block = trials_per_block - greater_per_block
-
-
-block_trials_mjrty_prct = .75                                                               # percent of congruent or incongruent trials in overall block (in terms of whatever is greater, so this number is always >= .5)
-block_trials_mnrty_prct = 1 - block_trials_mjrty_prct                                         # lesser percent in the block
-trials_per_block_mjrty = trials_per_block * block_trials_mjrty_prct
-trials_per_block_mnrty = trials_per_block * block_trials_mnrty_prct
-new_step = fractions.gcd(block_trials_mjrty_prct, block_trials_mnrty_prct)
 
 framelength = win.monitorFramePeriod
 def to_frames(t):                                                               # Converts time to frames accounting for the computer's refresh rate (aka framelength); input is the desired time on screen, but the ouput is the closest multiple of the refresh rate
@@ -100,6 +57,7 @@ resp_timeout_input = .5
 resp_timeout = to_frames(resp_timeout_input)
 
 
+
 ##-----------------------------STIMULI LOADING--------------------------------##
 
 fix = visual.TextStim(win=win, name = 'fix', color='black',text='+')            # create fixation cross
@@ -108,69 +66,171 @@ recordlocation = _thisDir + os.sep + u'data/%s/%s/%s' % (expInfo['participant'],
 os.makedirs(recordlocation)
 mic_1 = microphone.AdvAudioCapture(name = 'mic_1', filename = os.path.join(recordlocation, 'full_recording') + '.wav', stereo=False, chnl=0)
 
+
+
+##----------------------------- TRIAL MATRIXING-------------------------------##
+
+trial_types = ["congruent", "incongruent"]
+random.shuffle(trial_types)
+first_congruency = majority_left = trial_types[0]
+expInfo['first_congruency'] = first_congruency
+second_congruency = majority_right = trial_types[1]
+
+lesser_proportion = .25
+greater_proportion = 1 - lesser_proportion
+
+
+if task == 1:
+    
+    block_sequence = [first_congruency, second_congruency, first_congruency, second_congruency]
+    
+    blocks = len(block_sequence)
+    
+    atally = 0
+    
+    for i in block_sequence:
+        if i == "congruent":
+            atally += lesser_proportion
+        elif i == "incongruent":
+            atally += greater_proportion
+    
+    incongruent_overall = atally / blocks
+    
+elif task == 0:
+    incongruent_overall = .5
+    blocks = 4
+    
+def total_pics_func():
+    return prac_pics + main_pics
+
+incongruent_multiplier = 1 + incongruent_overall
+congruent_overall = 1 - incongruent_overall
+
+pic_csv = (pd.read_csv('IPNP_spreadsheet.csv') >>                             # read in the csv listing the different image names and relevant info like agreement factor
+            mask(X.Keep) >>
+            arrange(X.Mean_RT_All))     # sorts remaining rows in csv by these columns, which indicate how difficult the images are to identify
+
+actual_pics = len(pic_csv)
+prac_trials = 12
+prac_pics = int(prac_trials * incongruent_multiplier)
+main_trials = 500
+main_pics = int(main_trials * incongruent_multiplier)
+pics_needed = total_pics_func()
+
+if pics_needed > actual_pics:
+    pics_needed = actual_pics
+    main_trials  = int((pics_needed - prac_pics) / incongruent_multiplier)
+    pics_needed = total_pics_func()
+
+
+def floor_to_multiple(x, y):
+    return int(math.floor(1.0 * x / y) * y)
+
+main_trials = floor_to_multiple(main_trials, blocks)
+
+
+
+
 @make_symbolic                                                                  # this line is required to apply the function to column name like dplyr, which as a reminder also uses unquoted symbols for column names
 def to_ceil(x):                                                                 # round to ceiling; this is outside the dfply chain because for whatever reason dfply doesn't like numpy
     return np.ceil(x)
 
-@make_symbolic                                                                  # ditto same line in the `to_ceil` function
-def to_floor(x):                                                                # round to floor; like above, this is outside the dfply chain because for whatever reason dfply doesn't like numpy
-    return np.floor(x)
+@dfpipe
+def df_pipe(df, pic_total, trial_total, top_or_bottom):
+  df_for_piping = (df >>
+    head(pics_needed) >>            # keep only the top remaining rows in the csv so that the number of rows equals the number of trials + the number of incongruent trials
+    sample(frac = 1) >>                                                        # randomize the remaining rows
+    top_or_bottom(pic_total) >>
+    mutate(Lead_Dominant_Response = lead(X.Dominant_Response, int(trial_total * incongruent_overall))) >>
+    mutate(row_num_setup = 1) >>                                                # creates new column (1 is just a filler number)...
+    mutate(row_num = row_number(X.row_num_setup)) >>                            # ...which then gets converted into row_number rankings (apparently can't just create this new column of row numbers in just one line)
+    mutate(congruency = if_else(X.row_num <= trial_total * congruent_overall, "congruent", "incongruent")) >>
+    mutate(label = if_else(X.congruency == "congruent", X.Dominant_Response, X.Lead_Dominant_Response)) >>
+    head(trial_total)
+  )
+  return df_for_piping
 
-pics_csv_prelim_dply = (pics_csv >>
-    head(used_pics_main + trials_prac) >>            # keep only the top remaining rows in the csv so that the number of rows equals the number of trials + the number of incongruent trials
-    sample(frac = 1))                                                        # randomize the remaining rows
+
+main_trials_dplyed = (pic_csv >>
+    df_pipe(main_pics, main_trials, head)
+)
+
+trials_per_block = len(main_trials_dplyed) / blocks
+lesser_per_block = trials_per_block * lesser_proportion
+greater_per_block = trials_per_block - lesser_per_block
+
+
+
+block = -1
+lesser_threshold = greater_threshold = 0
+
+
+if task == 1:
+    
+    block = -1
+    new_row_order = []
+    lesser_count = greater_count = 0
+    
+    for a_row in range(len(main_trials_dplyed)):
+        
+        if len(new_row_order) % trials_per_block == 0:
+            block += 1
+            lesser_count = greater_count = 0
+        
+        block_dominance = block_sequence[block]
+        
+        row_counter = -1
+            
+        while True:
+            
+            row_counter += 1
+            
+            if row_counter not in new_row_order:
+                
+                gruency = main_trials_dplyed.iloc[row_counter].congruency
+                
+                if gruency == block_dominance and greater_count < greater_per_block:
+                    greater_count += 1
+                    break                    
+                elif gruency != block_dominance and lesser_count < lesser_per_block:
+                    lesser_count += 1
+                    break
+                
+        new_row_order.append(row_counter)
+    
+    @make_symbolic
+    def implement_new_order(y):
+        return new_row_order.index(y - 1)
+    
+    main_trials_dplyed = (main_trials_dplyed >>
+        mutate(row_num = X.row_num.apply(implement_new_order)) >>
+        arrange(X.row_num) >>
+        mutate(block = to_ceil(X.row_num / trials_per_block)) >>
+        group_by(X.block) >>
+        sample(frac = 1))
+
+
+ready_for_matrix = (pic_csv >>
+    df_pipe(prac_pics, prac_trials, tail) >>
+    sample(frac = 1) >>
+    bind_rows(main_trials_dplyed, join = 'inner')
+)
+
 
 faux_string_length = 6
 skip_letters = '[aeiouyl]'
 remaining_letters = re.sub(skip_letters, "", string.ascii_lowercase)
 
-
-pics_csv_main = (pics_csv_prelim_dply >>
-    head(used_pics_main) >>
-    mutate(Lead_Dominant_Response = lead(X.Dominant_Response, int(main_trials * (1 - overall_incongruency)))) >> # assign potential incongruent word, which is just the Dominant Response main_trials * (1 - overall_incongruency) rows below
-    mutate(row_num_setup = 1) >>                                                # creates new column (1 is just a filler number)...
-    mutate(row_num = row_number(X.row_num_setup)) >>                            # ...which then gets converted into row_number rankings (apparently can't just create this new column of row numbers in just one line)
-    mutate(congruency = if_else(X.row_num <= main_trials * (1 - overall_incongruency), "congruent", "incongruent")) >> # if the row number is <= main_trials * overall_incongruency, then it's a congruent trial; otherwise it's incongruent
-    head(main_trials) >>                                                    # now that we've extracted the bottom rows just for `Lead_Dominant_Response`, we can dispose of them
-    mutate(label = if_else(X.congruency == "congruent", X.Dominant_Response, X.Lead_Dominant_Response)) >> # sets up the word that will be overlaid on each trial
-    group_by(X.congruency) >>
-    mutate(row_num_by_cngrcy = dense_rank(X.row_num)) >>                        # create new row numbers separately for congruent and incongruent trials
-    mutate(row_num_by_cngrcy_grouped = to_ceil(X.row_num_by_cngrcy / lesser_per_block)) >> # group congruency's row numbers by how many appearances it would make in a minority block (e.g. every .25 * size of block); should yield resulting rows such as 1, 2, 3, etc...
-    # mutate(sumin = to_floor(X.row_num_by_cngrcy_grouped * new_step)) >>
-    mutate(new_row_n = if_else(X.congruency == first_congruency,                     # this ifelse statement is to take the grouped rows numbers from congruent and incongruent conditions and spread them out so there is only one row value between each of the two groups, as opposed to each group sharing each number once; gets accomplished by adding to the grouped row number...
-                        X.row_num_by_cngrcy + trials_per_block * (to_floor(X.row_num_by_cngrcy_grouped * new_step)), #...specifically, add to the grouped row number with a multiple of `block_size` (e.g. row number + 0*80, + 1*80, + 2*80); note, the max size of `to_floor`'s output is main_trials * overall_incongruency larger than its current row number;
-                        X.row_num_by_cngrcy + greater_per_block + trials_per_block * (to_floor((X.row_num_by_cngrcy_grouped - 1) * new_step)))) >>
-    ungroup() >>
-    arrange(X.new_row_n) >>
-    mutate(block = to_ceil(X.new_row_n / trials_per_block)) >>
-    group_by(X.block) >>
-    sample(frac = 1)
-    )
-
-pics_csv_dplyed = (pics_csv_prelim_dply >>
-    tail(trials_prac) >>
-    sample(frac = 1) >>
-    mutate(Lead_Dominant_Response = lead(X.Dominant_Response, int(trials_prac * overall_incongruency))) >>
-    mutate(row_num_setup = 1) >>
-    mutate(row_num = row_number(X.row_num_setup)) >>
-    mutate(congruency = if_else(X.row_num <= trials_prac * overall_incongruency, "congruent", "incongruent")) >>
-    mutate(label = if_else(X.congruency == "congruent", X.Dominant_Response, X.Lead_Dominant_Response)) >>
-    head(trials_prac) >>
-    sample(frac = 1) >>
-    bind_rows(pics_csv_main, join = 'inner')
-)
-
-
 if task == 0:
     tama = []
-    for i in range(len(pics_csv_dplyed)):
+    for i in range(len(ready_for_matrix)):
         tama.append("".join(random.choices(remaining_letters, k=faux_string_length)))
 
-    pics_csv_dplyed['label'] = tama
+    ready_for_matrix['label'] = tama
 
 pics_dir = "IPNP_Pictures_new"
 adict = {}
-for i, a, b in zip(pics_csv_dplyed.Dominant_Response, pics_csv_dplyed.Pic_Num, pics_csv_dplyed.label):
+for i, a, b in zip(ready_for_matrix.Dominant_Response, ready_for_matrix.Pic_Num, ready_for_matrix.label):
     adict[b.capitalize()] = (visual.ImageStim(win, image = os.path.join(pics_dir, a + i + ".png")),
                             visual.TextBox(window = win, text = b.upper(), font_color=(-1,-1,-1), background_color = [1,1,1,.8], textgrid_shape=[len(b), 1]),
                             b, i)
@@ -202,7 +262,7 @@ def runTrial():
     vpvkOff.stop()
     vpvkOn.stop()
 
-    for i in (('Trial', trial_num - trials_prac),                               # means that the first experimental trials ends up with a value of 0
+    for i in (('Trial', trial_num - prac_trials),                               # means that the first experimental trials ends up with a value of 0
                ('Picture_Identity', trial_vals[3]),
                ('Picture_Label', trial_vals[2]),
                ('Response_Time', vpvkOn.event_onset),
@@ -218,6 +278,7 @@ def runTrial():
 def create_inst(t):
     return visual.TextStim(win = win, text = t, units = 'deg', pos = (0, 0),
         height = 1, wrapWidth = 18, color = 'black', fontFiles = ['Lato-Reg.ttf'])
+#        height = 1, wrapWidth = 18, color = 'black', fontFiles = ['Aurebesh.ttf'])
 
 def continue_goback(s):
     return "\n\nPress space to " + s + " or \"B\" to go back."
@@ -231,14 +292,14 @@ inst1 = create_inst("Welcome to the study! It's a pretty straight-forward design
 
 inst2 = create_inst("One important part of the study is that you avoid using filler words like 'um'. This will significantly help the experimenter when he analyzes your data." + continue_goback("continue"))
 
-inst3 = create_inst("The task moves pretty fast, so you'll start off with " + str(trials_prac) + " trials to get the hang of it, before advancing to the main portion of the experiment. Please do let the experiment know either now or at any time if you have any questions."+ continue_goback("begin"))
+inst3 = create_inst("The task moves pretty fast, so you'll start off with " + str(prac_trials) + " trials to get the hang of it, before advancing to the main portion of the experiment. Please do let the experiment know either now or at any time if you have any questions."+ continue_goback("begin"))
 
 welcmmain = create_inst("Welcome to the main portion of the experiment! It'll work just like the practice trials, only there will be many more trials. The trials will be split among " + str(blocks - 1) + " breaks, and the whole study should total no more than 25 minutes (probably less).\n\nPress space to continue.")
 
 main_prev = create_inst("Again, please do avoid using filler words if you can. Let the experiment know if you have any questions, or otherwise, press the spacebar to begin!")
 
 def break_message(trial_count):
-    return create_inst("You've reached break " + str(int((trial_count - trials_prac) / (main_trials / blocks))) + " of " + str(blocks - 1) + ". This break is self-timed, so whenever you're ready press spacebar to continue the study.")
+    return create_inst("You've reached break " + str(int((trial_count - prac_trials) / (main_trials / blocks))) + " of " + str(blocks - 1) + ". This break is self-timed, so whenever you're ready press spacebar to continue the study.")
 
 thanks = create_inst("Thank you so much for your participation! Let the experimenter know that you're finished, and he'll set up the 1-minute, post-study demographic survey on this computer.")
 
@@ -267,12 +328,12 @@ instr_list([inst1, inst2, inst3])
 mic_1.record(sec=100000, block=False)                                           # sets an impossibly long time-out window so recording will last the whole experiment
 globalClock = core.MonotonicClock()                                             # to track the time since experiment started
 for trial_num, (trial_key, trial_vals) in enumerate(adict.items()):
-    if trial_num == trials_prac:                                                # when practice trials are over...
+    if trial_num == prac_trials:                                                # when practice trials are over...
         instr_list([welcmmain, main_prev])                                      # ...run the instructions for the main task
-    elif (trial_num - trials_prac) % (main_trials / blocks) == 0 and trial_num < trials_total:
+    elif (trial_num - prac_trials) % (main_trials / blocks) == 0 and trial_num < trials_total:
         instr_list([break_message(trial_num)])
     runTrial()
-    thisExp.addData('block', int((trial_num - trials_prac) / (main_trials / blocks)))
+    thisExp.addData('block', int((trial_num - prac_trials) / (main_trials / blocks)))
 mic_1.stop()
 instr_list([thanks])
 
