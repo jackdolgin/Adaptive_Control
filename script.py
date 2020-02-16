@@ -128,7 +128,10 @@ def floor_to_multiple(x, y):
 
 main_trials = floor_to_multiple(main_trials, blocks)
 
-
+pic_csv = (pic_csv >>
+    head(pics_needed) >>            # keep only the top remaining rows in the csv so that the number of rows equals the number of trials + the number of incongruent trials
+    sample(frac = 1)                                                        # randomize the remaining rows
+)
 
 
 @make_symbolic                                                                  # this line is required to apply the function to column name like dplyr, which as a reminder also uses unquoted symbols for column names
@@ -138,8 +141,6 @@ def to_ceil(x):                                                                 
 @dfpipe
 def df_pipe(df, pic_total, trial_total, top_or_bottom):
   df_for_piping = (df >>
-    head(pics_needed) >>            # keep only the top remaining rows in the csv so that the number of rows equals the number of trials + the number of incongruent trials
-    sample(frac = 1) >>                                                        # randomize the remaining rows
     top_or_bottom(pic_total) >>
     mutate(Lead_Dominant_Response = lead(X.Dominant_Response, int(trial_total * incongruent_overall))) >>
     mutate(row_num_setup = 1) >>                                                # creates new column (1 is just a filler number)...
@@ -155,8 +156,8 @@ main_trials_dplyed = (pic_csv >>
     df_pipe(main_pics, main_trials, head)
 )
 
-trials_per_block = len(main_trials_dplyed) / blocks
-lesser_per_block = trials_per_block * lesser_proportion
+trials_per_block = int(len(main_trials_dplyed) / blocks)
+lesser_per_block = int(trials_per_block * lesser_proportion)
 greater_per_block = trials_per_block - lesser_per_block
 
 
@@ -330,7 +331,7 @@ globalClock = core.MonotonicClock()                                             
 for trial_num, (trial_key, trial_vals) in enumerate(adict.items()):
     if trial_num == prac_trials:                                                # when practice trials are over...
         instr_list([welcmmain, main_prev])                                      # ...run the instructions for the main task
-    elif (trial_num - prac_trials) % (main_trials / blocks) == 0 and trial_num < trials_total:
+    elif (trial_num - prac_trials) % (main_trials / blocks) == 0 and trial_num < prac_trials + main_trials:
         instr_list([break_message(trial_num)])
     runTrial()
     thisExp.addData('block', int((trial_num - prac_trials) / (main_trials / blocks)))
