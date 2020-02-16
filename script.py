@@ -6,6 +6,7 @@
 # once you have the dfply folder, you want to take its inner folder that is also called dfply and that's the folder to copy into psychopy's python directory
 from dfply import *
 from psychopy import locale_setup, prefs, gui, visual, core, data, event, logging, clock, prefs, microphone
+from psychopy.visual import textbox
 import numpy as np
 import pandas as pd
 import fractions
@@ -38,7 +39,7 @@ task = int(expInfo['session'])
 
 # Setup the Window
 win = visual.Window(
-    size=(1280, 800), fullscr=True, allowGUI=False,
+    size=(1280, 800), fullscr=False, allowGUI=False,
     monitor='testMonitor', color=[1,1,1], useFBO=True)
 
 expInfo['frameRate'] = win.getActualFrameRate()                                 # store frame rate of monitor
@@ -67,6 +68,12 @@ os.makedirs(recordlocation)
 mic_1 = microphone.AdvAudioCapture(name = 'mic_1', filename = os.path.join(recordlocation, 'full_recording') + '.wav', stereo=False, chnl=0)
 
 
+fm = textbox.getFontManager()
+fm.addFontFiles([os.path.join("fonts", "Aurebesh.ttf"), os.path.join("fonts", "Lato-Reg.ttf")], monospace_only = False)
+if task == 0:
+    font_used = "Aurebesh"
+elif task == 1:
+    font_used = "Consolas"
 
 ##----------------------------- TRIAL MATRIXING-------------------------------##
 
@@ -218,22 +225,26 @@ ready_for_matrix = (pic_csv >>
 )
 
 
-faux_string_length = 6
-skip_letters = '[aeiouyl]'
-remaining_letters = re.sub(skip_letters, "", string.ascii_lowercase)
-
 if task == 0:
+    
+    faux_string_length = 6
+    skip_letters = '[aeiouyl]'
+#    skip_letters = '[abcdefgijklmopqrstuvwxyz]'
+    remaining_letters = re.sub(skip_letters, "", string.ascii_lowercase)
+    
     tama = []
     for i in range(len(ready_for_matrix)):
         tama.append("".join(random.choices(remaining_letters, k=faux_string_length)))
 
     ready_for_matrix['label'] = tama
-
+    
+    print(ready_for_matrix.label)
+    
 pics_dir = "IPNP_Pictures_new"
 adict = {}
 for i, a, b in zip(ready_for_matrix.Dominant_Response, ready_for_matrix.Pic_Num, ready_for_matrix.label):
     adict[b.capitalize()] = (visual.ImageStim(win, image = os.path.join(pics_dir, a + i + ".png")),
-                            visual.TextBox(window = win, text = b.upper(), font_color=(-1,-1,-1), background_color = [1,1,1,.8], textgrid_shape=[len(b), 1]),
+                            visual.TextBox(window = win, text = b.upper(), font_name = bytes(font_used, encoding= 'utf-8'), font_color=(-1,-1,-1), background_color = [1,1,1,.8], textgrid_shape=[len(b), 1]),
                             b, i)
 
 def runTrial():
@@ -278,7 +289,8 @@ def runTrial():
 
 def create_inst(t):
     return visual.TextStim(win = win, text = t, units = 'deg', pos = (0, 0),
-        height = 1, wrapWidth = 18, color = 'black', fontFiles = ['Lato-Reg.ttf'])
+        height = 1, wrapWidth = 18, color = 'black')
+#        height = 1, wrapWidth = 18, color = 'black', fontFiles = [os.path.join('fonts', 'Lato-Reg.ttf'])
 #        height = 1, wrapWidth = 18, color = 'black', fontFiles = ['Aurebesh.ttf'])
 
 def continue_goback(s):
