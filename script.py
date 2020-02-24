@@ -74,14 +74,6 @@ os.makedirs(recordlocation)
 mic_1 = microphone.AdvAudioCapture(name = 'mic_1', filename = os.path.join(recordlocation, 'full_recording') + '.wav', stereo=False, chnl=0)
 
 
-if task == 0:
-    fm = textbox.getFontManager()
-    #fm.addFontFile(os.path.join("fonts", "AurekBesh-3wrL.ttf"), monospace_only = False)
-    fm.addFontFile("AurekBesh-3wrL.ttf", monospace_only = False)
-    font_used = "Aurek-Besh"
-elif task == 1 or task == 2:
-    font_used = "Consolas"
-
 if task < 2:
     x_distance = 0
 else:
@@ -103,24 +95,24 @@ if task == 1:
     
     congruent_block_dominance = .75
     incongruent_block_dominance = .75
-
-    block_sequence = [first_congruency, second_congruency, first_congruency, second_congruency]
-    
-    blocks = len(block_sequence)
-    
-    numerator = 0
-    
-    for i in block_sequence:
-        if i == "congruent":
-            numerator += congruent_block_dominance
-        elif i == "incongruent":
-            numerator += 1 - incongruent_block_dominance
-
-    congruent_overall = numerator / blocks
     
 else:
-    congruent_overall = lesser_block_proportion = greater_block_proportion = .5
-    blocks = 4
+    congruent_block_dominance = .5
+    incongruent_block_dominance = .5
+
+block_sequence = [first_congruency, second_congruency, first_congruency, second_congruency]
+
+blocks = len(block_sequence)
+
+numerator = 0
+
+for i in block_sequence:
+    if i == "congruent":
+        numerator += congruent_block_dominance
+    elif i == "incongruent":
+        numerator += 1 - incongruent_block_dominance
+
+congruent_overall = numerator / blocks
 
 incongruent_overall = 1 - congruent_overall
 incongruent_multiplier = 1 + incongruent_overall
@@ -166,11 +158,11 @@ pic_csv = (pic_csv >>
     sample(frac = 1)                                                         # randomize the remaining rows
 )
 
-
 @make_symbolic                                                                  # this line is required to apply the function to column name like dplyr, which as a reminder also uses unquoted symbols for column names
 def to_ceil(x):                                                                 # round to ceiling; this is outside the dfply chain because for whatever reason dfply doesn't like numpy
     return np.ceil(x)
-    
+
+
 @make_symbolic
 def tomaba(series_element):
     my_min = main_trials * congruent_overall * congruent_side_dominance
@@ -183,15 +175,13 @@ def df_pipe(df, pic_total, trial_total, top_or_bottom):
   df_for_piping = (df >>
     top_or_bottom(pic_total) >>
     mutate(Lead_Dominant_Response = lead(X.Dominant_Response, int(trial_total * incongruent_overall))) >>
-    mutate(row_num_setup = x_distance) >>                                                # creates new column (x_distance is just a filler number)...
+    mutate(row_num_setup = 1) >>                                                # creates new column (`1` is just a filler number)...
     mutate(row_num = row_number(X.row_num_setup)) >>                            # ...which then gets converted into row_number rankings (apparently can't just create this new column of row numbers in just one line)
     mutate(congruency = if_else(X.row_num <= trial_total * congruent_overall, "congruent", "incongruent")) >>
     mutate(label = if_else(X.congruency == "congruent", X.Dominant_Response, X.Lead_Dominant_Response)) >>
-    mutate(row_num_set = tomaba(X.row_num)) >>
+    mutate(x_pos = tomaba(X.row_num)) >>
     head(trial_total) >>
-    group_by(X.congruency) >>
-    sample(frac = 1) >>
-    ungroup()
+    sample(frac = 1)
   )
   return df_for_piping
 
@@ -202,66 +192,61 @@ main_trials_dplyed = (pic_csv >>
 
 trials_per_block = int(len(main_trials_dplyed) / blocks)
 
-if task == 1:
-    
-    block = -1
-    new_row_order = []
-    
-    congruent_per_cong_block = int(trials_per_block * congruent_block_dominance)
-    incongruent_per_cong_block = trials_per_block - congruent_per_cong_block
-    incongruent_per_incong_block = int(trials_per_block * incongruent_block_dominance)
-    congruent_per_incong_block = trials_per_block - incongruent_per_incong_block
-    
-    
-    for a_row in range(len(main_trials_dplyed)):
-        
-        if len(new_row_order) % trials_per_block == 0:
-            block += 1
-            block_dominance = block_sequence[block]
-#            print (block_dominance)
-            if block_dominance == "congruent":
-                matching_per_block = congruent_per_cong_block
-                non_matching_per_block = incongruent_per_cong_block
-            elif block_dominance == "incongruent":
-                matching_per_block = incongruent_per_incong_block
-                non_matching_per_block = congruent_per_incong_block
-                
-            matching_count = non_matching_count = 0
-        
-        
-        row_counter = -1
-        
-        while True:
-            
-            row_counter += 1
-            
-            if row_counter not in new_row_order:
-                
-                gruency = main_trials_dplyed.iloc[row_counter].congruency
-                
-                if gruency == block_dominance and matching_count < matching_per_block:
-                    matching_count += 1
-                    break                    
-                elif gruency != block_dominance and non_matching_count < non_matching_per_block:
-                    non_matching_count += 1
-                    break
-                    
-                    
-        new_row_order.append(row_counter)
-    
-    @make_symbolic
-    def implement_new_order(y):
-        return new_row_order.index(y - 1)
-    
-    main_trials_dplyed = (main_trials_dplyed >>
-        mutate(row_num = X.row_num.apply(implement_new_order)) >>
-        arrange(X.row_num))
+block = -1
+new_row_order = []
 
+congruent_per_cong_block = int(trials_per_block * congruent_block_dominance)
+incongruent_per_cong_block = trials_per_block - congruent_per_cong_block
+incongruent_per_incong_block = int(trials_per_block * incongruent_block_dominance)
+congruent_per_incong_block = trials_per_block - incongruent_per_incong_block
+
+
+for a_row in range(len(main_trials_dplyed)):
+    
+    if len(new_row_order) % trials_per_block == 0:
+        block += 1
+        block_dominance = block_sequence[block]
+
+        if block_dominance == "congruent":
+            matching_per_block = congruent_per_cong_block
+            non_matching_per_block = incongruent_per_cong_block
+        elif block_dominance == "incongruent":
+            matching_per_block = incongruent_per_incong_block
+            non_matching_per_block = congruent_per_incong_block
+            
+        matching_count = non_matching_count = 0
+    
+    
+    row_counter = -1
+    
+    while True:
+        
+        row_counter += 1
+        
+        if row_counter not in new_row_order:
+            gruency = main_trials_dplyed.iloc[row_counter].congruency
+            if gruency == block_dominance and matching_count < matching_per_block:
+                matching_count += 1
+                break                    
+            elif gruency != block_dominance and non_matching_count < non_matching_per_block:
+                non_matching_count += 1
+                break
+                
+                
+    new_row_order.append(row_counter)
+
+@make_symbolic
+def implement_new_order(y):
+    return new_row_order.index(y - 1)
 
 main_trials_dplyed = (main_trials_dplyed >>
-        mutate(block = to_ceil(X.row_num / trials_per_block)) >>
-        group_by(X.block) >>
-        sample(frac = 1))
+    mutate(row_num = row_number(X.row_num_setup)) >>
+    mutate(row_num = X.row_num.apply(implement_new_order)) >>
+    arrange(X.row_num) >>
+    mutate(block = to_ceil((X.row_num  + 1) / trials_per_block)) >>
+    group_by(X.block) >>
+    sample(frac = 1)
+)
 
 ready_for_matrix = (pic_csv >>
     df_pipe(prac_pics, prac_trials, tail) >>
@@ -273,8 +258,8 @@ ready_for_matrix = (pic_csv >>
 
 if task == 0:
     
-    faux_string_length = 4
-    skip_letters = '[dkmvw]'
+    faux_string_length = 5
+    skip_letters = '[aeilouy]'
     remaining_letters = re.sub(skip_letters, "", string.ascii_lowercase)
     
     tama = []
@@ -283,23 +268,15 @@ if task == 0:
 
     ready_for_matrix['label'] = tama
     
-#    print(ready_for_matrix.label)
-    
 pics_dir = "IPNP_Pictures_new"
 adict = {}
-for i, a, b, x, bl in zip(ready_for_matrix.Dominant_Response, ready_for_matrix.Pic_Num, ready_for_matrix.label, ready_for_matrix.row_num_setup, ready_for_matrix.block):
+for i, a, b, x, bl in zip(ready_for_matrix.Dominant_Response, ready_for_matrix.Pic_Num, ready_for_matrix.label, ready_for_matrix.x_pos, ready_for_matrix.block):
     adict[b.capitalize()] = ((visual.ImageStim(win, image = os.path.join(pics_dir, a + i + ".png"), pos = (x, 0), units = 'cm'),
-                            visual.TextBox(window = win, text = b.upper(), font_name = bytes(font_used, encoding= 'utf-8'), font_color=(-1,-1,-1), background_color = [1,1,1,.8], textgrid_shape=[len(b), 1], pos = (x, 0), units = 'cm')),
+                            visual.TextBox(window = win, text = b.upper(), font_name = bytes("Consolas", encoding= 'utf-8'), font_color=(-1,-1,-1), background_color = [1,1,1,.8], textgrid_shape=[len(b), 1], pos = (x, 0), units = 'cm')),
                             b, i, x, bl)
-#    print (x)
-#for i in ready_for_matrix.row_num_setup:
-#    print(i)
+
 
 def runTrial():
- 
-#    def list_comp(afunc, alist):
-#        [i.afunc() for i in alist]
-#        [i.afunc for i in alist]
 
     def proceed_or_stop():
         if event.getKeys(keyList = ["escape"]):                                 # quit out of task if escape gets pressed
@@ -311,7 +288,6 @@ def runTrial():
     timeout_2 = talk_spillover + fix_duration
     vpvkOff = vk.OffsetVoiceKey()                                       # tracks voice offset
     vpvkOn = vk.OnsetVoiceKey(sec = timeout_1 + timeout_2)                      # tracks voice onset (note- without the `sec = ` parameter, it's possible there will be an error that the baseline is too quiet
-#    list_comp(start(), (vpvkOff, vpvkOn))
     [i.start() for i in (vpvkOff, vpvkOn)]
 
     start_recording = globalClock.getTime()                             # timer used as reference for voice onset and offset
@@ -319,17 +295,10 @@ def runTrial():
     frames_transpired_1 = frames_transpired_2 = 0
  
  
-#    print (timeout_1)
     while vpvkOff.event_offset == 0 or frames_transpired_1 < earliest_possible_timeout:
-#        print (frames_transpired_1)
-#        list_comp(draw(), trial_vals[0])
-#        list_comp(start(), (vpvkOff, vpvkOn))
-#        [print(i) for i in trial_vals[0]]
+
         [i.draw() for i in trial_vals[0]]
-#        trial_vals[0][0].draw()
-##        print ("yp")
-#        trial_vals[0][1].draw()
-#        print ("ta")
+
         if frames_transpired_1 >= timeout_1 and vpvkOn.event_onset == 0:
             break
             
@@ -356,68 +325,21 @@ def runTrial():
     while frames_transpired_2 < timeout_2:
         
         if frames_transpired_2 < talk_spillover:
-#            list_comp(draw(), trial_vals[0])
+
             [i.draw() for i in trial_vals[0]]
         elif (trial_num + 1) % trials_per_block != 0:
             fix.draw()
 
         if vpvkOn.power[-1] >= 50:
             timeout_2 += ITI_talking_penalty
-#            print("yolo")
-#            print (trial_num)
         
         frames_transpired_2 += 1
         
         proceed_or_stop()
     
-#    list_comp(stop(), (vpvkOff, vpvkOn))
     [i.stop() for i in (vpvkOff, vpvkOn)]
 
 
-
-#def runTrial():
-#    def discount_ITI_talking():
-#        if vpvkOn.power[-1] >= 50 and vpvkOn.power[-2] < 50:
-#                resp_frame_count -= ITI_talking_penalty
-#    frame_count = resp_frame_count = 0
-#    fix.setAutoDraw(True)                                                       # start drawing fixation at the outset of the trial since it's on the screen at the beginning of all trials
-#    while resp_frame_count < resp_timeout or frame_count < timeout_min:
-#        if event.getKeys(keyList = ["escape"]):                                 # quit out of task if escape gets pressed
-#            mic_1.stop()
-#            core.quit()
-#        if frame_count < fix_duration and len(vpvkOn) > 0:
-#            discount_ITI_talking()
-#        elif frame_count == fix_duration:                                         # after certain between-trial delay has elapsed...
-#            fix.setAutoDraw(False)                                              # ...remove fixation cross and start recording voice
-#            vpvkOff = vk.OffsetVoiceKey()                                       # tracks voice offset
-#            vpvkOn = vk.OnsetVoiceKey(sec = timeout_input)                      # tracks voice onset (note- without the `sec = ` parameter, it's possible there will be an error that the baseline is too quiet
-#            [i.start() for i in (vpvkOff, vpvkOn)]
-#            start_recording = globalClock.getTime()                             # timer used as reference for voice onset and offset
-#        elif frame_count > fix_duration:                                        # after we've started recording...
-#            [trial_vals[i].draw() for i in range(2)]                            # keep re-drawing the stimuli until otherwise specified
-#            if hasattr(vpvkOff, 'event_offset') and vpvkOff.event_offset > 0:   # if voice offset has occured...
-#                resp_frame_count += 1                                           # ...start timing how long it's been since speaking has ended; this is so we don't end trial at the exact moment talking ends and allows for someone to keep talking for a little bit beyond a potentially-early recording stoppage
-#                discount_ITI_talking()
-##        print(vpvkOn.event_onset > 0)
-#            elif frame_count == timeout and vpvkOn.event_onset == 0:            # if we've reached the max trial time and speaking still hasn't been picked up...
-#                vpvkOff.event_offset = "NA"                                     # ...set event offset value to NA and...
-#                break                                                           # ...end trial
-#                
-#        frame_count += 1
-#        win.flip()
-#    [i.stop() for i in (vpvkOff, vpvkOn)]
-#
-#    for i in (('Trial', trial_num - prac_trials),                               # means that the first experimental trials ends up with a value of 0
-#               ('Picture_Identity', trial_vals[2]),
-#               ('Picture_Label', trial_vals[1]),
-#               ('Display_Side', trial_vals[3]),
-##               ('Response_Time', vpvkOn.event_onset),
-##               ('Response_Finish', vpvkOff.event_offset),
-#               ('Stim_Onset_in_Overall_Exp', start_recording),
-#               ('block', trial_vals[4])):
-#
-#        thisExp.addData(i[0], i[1])
-#    thisExp.nextEntry()
 
 
 ##-------------------------------INSTRUCTION SCREEN---------------------------##
@@ -425,8 +347,6 @@ def runTrial():
 def create_inst(t):
     return visual.TextStim(win = win, text = t, units = 'deg', pos = (0, 0),
         height = 1, wrapWidth = 18, color = 'black')
-#        height = 1, wrapWidth = 18, color = 'black', fontFiles = [os.path.join('fonts', 'Lato-Reg.ttf'])
-#        height = 1, wrapWidth = 18, color = 'black', fontFiles = ['Aurebesh.ttf'])
 
 def continue_goback(s):
     return "\n\nPress space to " + s + " or \"B\" to go back."
@@ -485,7 +405,6 @@ for trial_num, (trial_key, trial_vals) in enumerate(adict.items()):
             instr_list([welcmmain, main_prev])                                      # ...run the instructions for the main task
         elif trial_num < main_trials:
             instr_list([break_message(trial_vals[4])])
-#        blockdelay(fix.draw())
         fix.setAutoDraw(True) #ideally get rid of this line and the one two below
         blockdelay()
         fix.setAutoDraw(False)
