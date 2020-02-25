@@ -19,7 +19,7 @@ import re
 import string
 
 microphone.switchOn()
-vk.pyo_init()                                                                   # Defaults PsychoPy's settings to using the Pyo library, which is used for the audio throughout the experiment
+vk.pyo_init()                                                                   # Defaults PsychoPy's settings to using the pyo library, which is used for the audio throughout the experiment
 
 
 # Ensure that relative paths start from the same directory as this script
@@ -42,12 +42,13 @@ win = visual.Window(
     size=(1280, 800), fullscr=False, allowGUI=False,
     monitor='testMonitor', color=[1,1,1], useFBO=True)
 
+
 ##----------------------------EXPERIMENT TIMING-------------------------------##
 
 expInfo['frameRate'] = win.getActualFrameRate()                                 # store frame rate of monitor
 
 framelength = win.monitorFramePeriod
-def to_frames(t):                                                               # Converts time to frames accounting for the computer's refresh rate (aka framelength); input is the desired time on screen, but the ouput is the closest multiple of the refresh rate
+def to_frames(t):                                                              # Converts time to frames accounting for the computer's refresh rate (aka framelength); input is the desired time on screen, but the ouput is the closest multiple of the refresh rate
     return int(round(t / framelength))
 
 
@@ -335,15 +336,13 @@ def runTrial():
     for i in (('Trial', trial_num - prac_trials),                               # means that the first experimental trials ends up with a value of 0
                    ('Picture_Identity', trial_vals[2]),
                    ('Picture_Label', trial_vals[1]),
-                   ('Display_Side', trial_vals[3]),
-                   ('Response_Time', vpvkOn.event_onset),
-                   ('Response_Finish', vpvkOff.event_offset),
-                   ('Stim_Onset_in_Overall_Exp', start_recording),
-                   ('block', trial_vals[4])):
+                   ('Task_Side', trial_vals[3]),
+                   ('Response_Time_in_PsychoPy', vpvkOn.event_onset),
+                   ('Response_Finish_in_PsychoPy', vpvkOff.event_offset),
+                   ('Stim_Onset', start_recording),
+                   ('Block', trial_vals[4])):
 
         thisExp.addData(i[0], i[1])
-
-    thisExp.nextEntry()
 
 
 ##-------------------------------DEFINE ITI-----------------------------------##
@@ -356,6 +355,9 @@ def runTrial():
         elif (trial_num + 1) % trials_per_block != 0:
             fix.draw()
 
+        if frames_transpired_2 == talk_spillover:            
+            stim_offset_fix_onset = globalClock.getTime()
+
         if vpvkOn.power[-1] >= 50:
             timeout_2 += ITI_talking_penalty
 
@@ -366,6 +368,11 @@ def runTrial():
     [i.stop() for i in (vpvkOff, vpvkOn)]
 
 
+
+    thisExp.addData('Stim_Offset_Fix_Onset',stim_offset_fix_onset)
+
+    thisExp.nextEntry()
+    thisExp.addData('Fix_Offset', globalClock.getTime())
 
 
 ##-----------------------------WRITE THE INSTRUCTIONS-------------------------##

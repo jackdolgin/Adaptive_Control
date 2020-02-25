@@ -14,6 +14,8 @@ folderName = os.path.join(_thisDir, "IPNP_Pictures")
 
 maxsize = 300
 
+min_height = 160
+
 filePaths = glob.glob(folderName + "/*.png")
 
 newfolderName = os.path.join(_thisDir, "IPNP_Pictures_new")
@@ -41,8 +43,15 @@ for filePath in filePaths:
         mult_ratio = (float(maxsize) / image_width)
     else:
         mult_ratio = (float(maxsize) / image_height)
+    
+    new_height = int(image_height * mult_ratio)
+    if new_height < min_height:
+        new_height = min_height
 
-    upscaled = cropped.resize((int(image_width * mult_ratio), int(image_height * mult_ratio)))
+    new_width = int(image_width * mult_ratio)
+
+
+    upscaled = cropped.resize((new_width, new_height))
 
     filePath_basename = (ntpath.basename(filePath))
     upscaled.save(newfolderName + os.sep + filePath_basename)
