@@ -32,21 +32,52 @@ expInfo = {'Participant':''}                                                   #
 if gui.DlgFromDict(dictionary=expInfo).OK == False:                             # Creates popup at beginning of experiment that asks for participant number
     core.quit()                                                                 # Says, "if you press escape or click cancel when that popup appears, then don't run the experiment"; if this if-statement didn't exist, experiment would run regardles of whether you hit escape/click cancel
 expInfo['Date'] = data.getDateStr()                                             # Add a simple timestamp
-filelocation = _thisDir + os.sep + u'data/%s' % (expInfo['Participant'])        # Creates data file name
+participant_number = expInfo['Participant']
+filelocation = _thisDir + os.sep + u'data/%s' % (participant_number)        # Creates data file name
 filename = os.path.join(filelocation, 'exp_data')
 thisExp = data.ExperimentHandler(extraInfo = expInfo, dataFileName = filename)
 logFile = logging.LogFile(filename + '.log', level = logging.EXP)               # Save a log file for detail verbose info
-
-
-session_types = np.repeat(range(3),20)                                         # Randomizes assignment of session for participants, counterbalanced
-random.Random(123).shuffle(session_types)
-task = session_types[int(expInfo['Participant']) - 1]
-expInfo['Task'] = task
 
 # Setup the Window
 win = visual.Window(
     size=(1280, 800), fullscr=True, allowGUI=False,
     monitor='testMonitor', color=[1,1,1], useFBO=True)
+
+
+##--------------------------CONDITION ASSIGNMENT---------------------------##
+
+num_of_tasks = 3
+conditions_per_task = ("Congruent", "Incongruent")
+num_conditions_per_task = len(conditions_per_task)                                                           # 0 for congruent, 1 for incongruent
+
+def floor_to_multiple(x, y):
+    return int(math.floor(1.0 * x / y) * y)
+
+participants_per_task = 20
+participants_per_task = floor_to_multiple(participants_per_task, num_conditions_per_task)          # needs to be divisible by `conditions_per_task` to counterbalance whether congruent or incongruent block starts first for each task
+total_participants = participants_per_task * num_of_tasks
+
+task_order = np.repeat(range(num_of_tasks), participants_per_task)                                         # Randomizes assignment of session for participants, counterbalanced
+first_congruency_order = np.tile(range(num_conditions_per_task), int(total_participants / num_conditions_per_task))
+task_and_first_congruency_order = list(zip(task_order, first_congruency_order))
+random.Random(123).shuffle(task_and_first_congruency_order)
+
+task_order[:], first_congruency_order[:] = zip(*task_and_first_congruency_order)
+
+task = task_order[int(participant_number) - 1]
+expInfo['Task'] = task
+first_congruency_int = first_congruency_order[int(participant_number) - 1]
+first_congruency = majority_left = conditions_per_task[first_congruency_int]
+
+if task == 0:
+    first_congruency_upload = 'NA'
+elif task == 1:
+    first_congruency_upload = first_congruency                                  # Record whether the first block is either mostly congruent or incongruent
+elif task == 2:
+    first_congruency_upload = 'Even_Split'
+expInfo['First_Congruency'] = first_congruency_upload
+second_congruency = majority_right = conditions_per_task[1 - first_congruency_int]
+
 
 
 ##----------------------------EXPERIMENT TIMING-------------------------------##
@@ -67,7 +98,7 @@ talk_spillover_input = .6                                                       
 talk_spillover = to_frames(talk_spillover_input)
 fix_duration_input = .75                                                        # length of fixation cross on the screen during ITI
 fix_duration = to_frames(fix_duration_input)
-ITI_talking_penalty_input = .1                                                  # For every frame (i.e. run through the while loop) in which talking is detected during ITI, add this much additional time before presenting next trial; this is so someone doesn't keep talking into the start of the next trial, especially if talking only started during ITI (like if they were late to give the response to the previous trial)
+ITI_talking_penalty_input = .04                                                  # For every frame (i.e. run through the while loop) in which talking is detected during ITI, add this much additional time before presenting next trial; this is so someone doesn't keep talking into the start of the next trial, especially if talking only started during ITI (like if they were late to give the response to the previous trial)
 ITI_talking_penalty = to_frames(ITI_talking_penalty_input)
 
 
@@ -75,7 +106,7 @@ ITI_talking_penalty = to_frames(ITI_talking_penalty_input)
 
 fix = visual.TextStim(win=win, color='black', text='+')                         # Create fixation cross
 
-recordlocation = _thisDir + os.sep + u'data/%s/%s/%s' % (expInfo['Participant'],# Location for the eventual recording of participant's voice response; gets saved in a subfolder within the `audio` folder...
+recordlocation = _thisDir + os.sep + u'data/%s/%s/%s' % (participant_number,  # Location for the eventual recording of participant's voice response; gets saved in a subfolder within the `audio` folder...
                                                          'audio',               # ...so that during analyses the audio recordings from each trial are the only files directly in the `audio` folder (without needing to be recurively accessed); allows...
                                                          'full_recording')      # ...for just analyzing every .wav file R finds directly in the `audio` folder
 
@@ -102,13 +133,6 @@ else:
 
 ##-----------------------------TRIAL PROPORTIONS------------------------------##
 
-trial_types = ["congruent", "incongruent"]
-random.shuffle(trial_types)                                                     # Shuffle whether the first (and third) block is mostly congruent or mostly incongruent
-first_congruency = majority_left = trial_types[0]
-expInfo['First_Congruency'] = first_congruency                                  # Record whether the first block is either mostly congruent or incongruent
-second_congruency = majority_right = trial_types[1]
-
-
 
 if task == 1:                                                                   # For task #1, set what percent of trials during a mostly-congruent block are congruent, and during a mostly-incongruent block are incongruent
 
@@ -127,9 +151,9 @@ blocks = len(block_sequence)
 numerator = 0                                                                   # We add to this starting point of zero as we loop through each block, tallying the percent of trials that are congruent and ultimatley dividing by all...
                                                                                 # ...the blocks in the task to find the percent of trials per block (on average) that are congruent (and therefore incongruent)
 for i in block_sequence:
-    if i == "congruent":
+    if i == "Congruent":
         numerator += congruent_block_dominance
-    elif i == "incongruent":
+    elif i == "Incongruent":
         numerator += 1 - incongruent_block_dominance
 
 congruent_overall = numerator / blocks
@@ -164,10 +188,8 @@ if pics_needed > actual_pics:                                                   
     main_trials  = int((pics_needed - prac_pics) / incongruent_multiplier)      # New number of main experiment trials is the number of pictures needed after accounting for practice trials, divided by `incongruent_multiplier` to essentially leave room for the number of incongruent labels (equaling all available pics minus main trials), which we know is supposed to be `incongruent_overall`% of all main_trials leaves; sort of like seeing how many main trials we can squeak out while...
                                                                                 # ...satisfying the incongruent_multiplier demand faithfully
 
-def floor_to_multiple(x, y):                                                    # Allows for slicing off any extra `main_trials` so that the number of `main_trials` can be split exactly evenly into the number of blocks (if we do slice any `main_trials` off, that would mean `pics_needed` would be slightly greater...
-    return int(math.floor(1.0 * x / y) * y)                                     # ...than `main_trials` * `incongruent_multiplier`, but that's ok because then we just wouldn't be using a few incongruent labels on the back end (so maybe just a few pics would go to 'waste'))
-
-main_trials = floor_to_multiple(main_trials, blocks)
+main_trials = floor_to_multiple(main_trials, blocks)                             # Allows for slicing off any extra `main_trials` so that the number of `main_trials` can be split exactly evenly into the number of blocks (if we do slice any `main_trials` off, that would mean `pics_needed` would be slightly greater...
+                                                                                  # ...than `main_trials` * `incongruent_multiplier`, but that's ok because then we just wouldn't be using a few incongruent labels on the back end (so maybe just a few pics would go to 'waste'))
 
 
 ##------------------------------MATRIX ASSEMBLY-------------------------------##
@@ -186,7 +208,7 @@ def to_ceil(x):                                                                 
 @make_symbolic                                                                  # Works with a table that is only congruent trials on the top, followed by incongruent trials; finds cutoff...
 def assign_sides_to_rows(given_row_num, trial_total_arg):                       # ...among congruent trials where `congruent_side_dominance` % of trials are above it, and those trials are on...
     cong_side_cutoff = (trial_total_arg * congruent_overall *                   # ...the congruent dominant side; remaining congruent trials and first `incongruent_side_dominance` % of...
-                        congruent_side_dominance)                               # ...incongruent trials are assigned to the other (mostly incongruent) half of the screen; finally, remaining...
+                        congruent_side_dominance)                               # ...incongruent trials are assigned to the other (mostly \) half of the screen; finally, remaining...
     incong_side_cutoff = (trial_total_arg * congruent_overall +                 # ...incongruent trials are assigned back to the first side and are among the minority of incongruent trials...
                           trial_total_arg * incongruent_overall *               # ... on their side; the flexibility of this setup allows the percent of overall congruent trials to be orthogonal...
                           incongruent_side_dominance)                           # ...from the percent of congruent trials on each side (and in turn, each side's number of congruent trials are...
@@ -204,8 +226,8 @@ def df_pipe(df, pic_total, trial_total, top_or_bottom):
     mutate(row_num_setup = 1) >>                                                # This column is a placeholder, we can't assign row numbers to the rows (at least as far as I know) unless all the rows are equal to the same value and then `row_number()` ranks the rows as a tie-breaker
     mutate(row_num = row_number(X.row_num_setup)) >>
     mutate(congruency = if_else(X.row_num <= trial_total * congruent_overall,   # Only rows above/below a certain row number get assigned congruent/incongruent; congruents come first, so that it's easier to use the lead function...
-                                "congruent", "incongruent")) >>                 # ...to bump up the incongruent labels that don't get used in any other trials (since we're about to prune any row > `prac_trials` + `main_trials`)
-    mutate(label = if_else(X.congruency == "congruent",                         # If a trial is congruent, its label is its pic identity; if incongruent, its label is the lead of the pic identity
+                                "Congruent", "Incongruent")) >>                 # ...to bump up the incongruent labels that don't get used in any other trials (since we're about to prune any row > `prac_trials` + `main_trials`)
+    mutate(label = if_else(X.congruency == "Congruent",                         # If a trial is congruent, its label is its pic identity; if incongruent, its label is the lead of the pic identity
                            X.Dominant_Response, X.Lead_Dominant_Response)) >>
     mutate(x_pos = assign_sides_to_rows(X.row_num, trial_total)) >>
     head(trial_total) >>                                                        # Strips out the rows that supplied the incongruent labels
@@ -255,10 +277,10 @@ for a_row in range(len(main_trials_df)):
         block += 1
         block_dominance = block_sequence[block]
 
-        if block_dominance == "congruent":
+        if block_dominance == "Congruent":
             matching_per_block = congruent_per_cong_block
             non_matching_per_block = incongruent_per_cong_block
-        elif block_dominance == "incongruent":
+        elif block_dominance == "Incongruent":
             matching_per_block = incongruent_per_incong_block
             non_matching_per_block = congruent_per_incong_block
 
@@ -327,10 +349,10 @@ if task == 0:
 
 pics_dir = "IPNP_Pictures_new"                                                  # The directory hosting the stimuli pictures
 adict = {}                                                                      # Ultimately the trial matrix is actually dictionary
-for dominant_resp, a, b, x, bl in zip(ready_for_matrix.Dominant_Response, ready_for_matrix.Pic_Num, ready_for_matrix.label, ready_for_matrix.x_pos, ready_for_matrix.block):
+for dominant_resp, a, b, x, bl, pic_num in zip(ready_for_matrix.Dominant_Response, ready_for_matrix.Pic_Num, ready_for_matrix.label, ready_for_matrix.x_pos, ready_for_matrix.block, ready_for_matrix.Pic_Num):
     adict[b.capitalize()] = ((visual.ImageStim(win, image = os.path.join(pics_dir, a + dominant_resp + ".png"), pos = (x, 0), units = 'cm'), # Preload all of the stimuli pictures into the trial matrix/dictionary; we do this before running any of the trials so we stomach the image loading times on the front end
                             visual.TextBox(window = win, text = b.upper(), font_name = bytes("Consolas", encoding= 'utf-8'), font_color=(-1,-1,-1), background_color = [1,1,1,.8], textgrid_shape=[len(b), 1], pos = (x, 0), units = 'cm')), # Crucially, we use `TextBox()` instead of `TextStim()` because `TextBox()` can be overlaid translucently on top of the pis; though it does work best only with monospaced font)
-                            b, dominant_resp, x, bl)
+                            b, dominant_resp, x, bl, pic_num)
 
 
 
@@ -382,6 +404,7 @@ def runTrial():
 ##---------------------------SAVE TRIAL DATA----------------------------------##
 
     for i in (('Trial', trial_num + 1),                                         # Means that the first experimental trials ends up with a value of `1`
+                   ('Picture_Number', trial_vals[5]),
                    ('Picture_Identity', trial_vals[2]),
                    ('Picture_Label', trial_vals[1]),
                    ('Task_Side', trial_vals[3]),
