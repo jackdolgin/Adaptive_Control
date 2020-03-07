@@ -3,6 +3,7 @@ if (!require(devtools)) install.packages("pacman")
 pacman::p_load(googleLanguageR, googleCloudStorageR, tuneR, fs, data.table,
                DescTools, tidyverse, future, here, magrittr)
 pacman::p_load_gh("LiKao/VoiceExperiment")
+devtools::source_gist("746685f5613e01ba820a31e57f87ec87")
 
 no_cores <- availableCores() - 1
 plan(multicore, workers = no_cores)
@@ -14,15 +15,13 @@ plan(multicore, workers = no_cores)
 mypath <- here("Data")
 
 
-predictive_context <- function(mydf, either_block_or_side, relevant_task,
-                               na_tasks){
+predictive_context <- function(mydf, either_block_or_side, relevant_task){
   mydf %>%
     group_by(Participant, !!either_block_or_side) %>%
     mutate(!!paste0(quo_name(either_block_or_side), "_Bias") := 
              case_when(
-               Task %in% na_tasks ~ NA_character_,
-               Task != relevant_task ~ "Neither",
-               sum(trial_congruency == "Congruent") / n() > .5 ~ "Congruent",
+               Task != relevant_task ~ NA_character_,
+               sum(Congruency == "Congruent") / n() > .5 ~ "Congruent",
                TRUE ~ "Incongruent")
     )
 }
@@ -34,14 +33,14 @@ prep_data <- dir_ls(mypath, glob = "*.csv", recurse = TRUE) %>%
   left_join(fread("IPNP_spreadsheet_synonyms.csv")) %>%
   group_by(Participant) %>%
   mutate(
-    trial_congruency = ifelse(Picture_Identity == Picture_Label,
+    Congruency = ifelse(Picture_Identity == Picture_Label,
                               "Congruent", "Incongruent"),
     End_recording = ifelse(
-      lead(Stim_Onset) > Stim_Onset + 58 | row_number() == n(),
+      lead(Fix_Offset) > Stim_Onset + 58 | row_number() == n(),
       Stim_Onset + 58,
-      lead(Stim_Onset, default = last(Stim_Onset) + 58))) %>%
-  predictive_context(quo(Block), 1, c(0)) %>%
-  predictive_context(quo(Task_Side), 2, 0:1) %>%
+      lead(Fix_Offset, default = last(Fix_Offset) + 58))) %>%
+  predictive_context(quo(Block), "Predictive Blocks") %>%
+  predictive_context(quo(Task_Side), "Predictive Locations") %>%
   ungroup() %>%
   mutate_at(vars(Synonyms), ~paste(
     ., ifelse(Picture_Identity == Picture_Label,
@@ -79,10 +78,10 @@ pull_in_from_google <- prep_data %>%
     }
   }) %>%
   right_join(prep_data) %T>%
-  write.csv("pull_in_from_google.csv")
+  write_csv("pull_in_from_google.csv") #%>% 
 
 
-pull_in_from_google2 <- pull_in_from_google %>%
+pull_in_from_google2 <- read_csv("pull_in_from_google.csv") %>%
   group_by_at(vars(-preciseStartTime, -preciseEndTime, -transcript,             # so that each trial only takes up 1 row,...
                    -confidence)) %>%                                            # though each trial might only be one row...
   summarise(across(transcript, ~paste0(., collapse = "")),                      # anyways; depends on whether Google spits...
@@ -92,30 +91,50 @@ pull_in_from_google2 <- pull_in_from_google %>%
   mutate_at(vars(Picture_Identity, Picture_Label, Synonyms, transcript),
             ~str_remove_all(., " ") %>% tolower) %>%
   mutate(Accuracy = pmap_lgl(., function(
-    Synonyms, transcript, Picture_Label, trial_congruency, ...){
+    Synonyms, transcript, Picture_Label, Congruency, ...){
     case_when(
-      transcript == Picture_Label & trial_congruency == "Incongruent" ~ FALSE,
+      transcript == Picture_Label & Congruency == "Incongruent" ~ FALSE,
       transcript %in% pluck(strsplit(Synonyms, ','), 1) ~ TRUE,
-      TRUE ~ NA)} 
-  )) %>%
-  filter(Accuracy)
+      TRUE ~ NA)})) %>%
+  arrange(Participant, Trial) %>%
+  group_by(Participant, Block) %>%
+  mutate(
+    Prev_Congruency = lag(Congruency),
+    Prev_Accuracy = lag(Accuracy)) %>%
+  ungroup() %>%
+  filter(Accuracy,
+         Prev_Accuracy)
 
 Neutral_Timings <- pull_in_from_google2 %>%
-  # filter(Task == 0) %>%     # need to uncomment this later, because neutral trials should only be extracted from Task == 0
+  # filter(Task == "Neutral") %>%     # need to uncomment this later, because neutral trials should only be extracted from Task == "Neutral"
   group_by(Picture_Identity) %>%
   summarise(RT = mean(preciseStartTime, na.rm = TRUE))
 
 pull_in_from_google3 <- pull_in_from_google2 %>%
-  filter(Task > 0,
+  filter(str_detect(Task, "Predictive"),
          !is.na(preciseStartTime)) %>%
   mutate(
     RT_comparison = map_dbl(
       Picture_Identity,
       ~filter(Neutral_Timings, Picture_Identity == .) %>% pull(RT)),
-    RT_diff = preciseStartTime - RT_comparison)
+    RT_diff = preciseStartTime - RT_comparison,
+    Bias = coalesce(Block_Bias, Task_Side_Bias))
+
+pull_in_from_google3 %>%
+  ggplot(aes(x = Congruency, y = preciseStartTime, fill = Bias)) +
+  geom_split_violin(alpha = .5, show.legend = FALSE) +
+  geom_boxplot(width = .2, position = position_dodge(.25), outlier.shape = NA,
+               alpha = .3, aes(color = Congruency), size = .5) +
+  scale_fill_manual(values=c("#D55E00", "#0072B2")) +
+  scale_color_manual(values=c("#D55E00", "#0072B2")) +
+  theme_bw()
 
 
 pull_in_from_google3 %>%
-  group_by(Block_Bias, Task_Side_Bias, trial_congruency) %>%
-  summarise(mean(RT_diff))
-
+  ggplot(aes(x = Congruency, y = preciseStartTime, fill = Bias)) +
+  geom_split_violin(alpha = .5, show.legend = FALSE) +
+  geom_boxplot(width = .2, position = position_dodge(.25), outlier.shape = NA,
+               alpha = .3, aes(color = Congruency), size = .5) +
+  scale_fill_manual(values=c("#D55E00", "#0072B2")) +
+  scale_color_manual(values=c("#D55E00", "#0072B2")) +
+  theme_bw()

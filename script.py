@@ -46,7 +46,8 @@ win = visual.Window(
 
 ##--------------------------CONDITION ASSIGNMENT---------------------------##
 
-num_of_tasks = 3
+tasks = ("Neutral", "Predictive Blocks", "Predictive Locations")
+num_of_tasks = len(tasks)
 conditions_per_task = ("Congruent", "Incongruent")
 num_conditions_per_task = len(conditions_per_task)                                                           # 0 for congruent, 1 for incongruent
 
@@ -57,7 +58,7 @@ participants_per_task = 20
 participants_per_task = floor_to_multiple(participants_per_task, num_conditions_per_task)          # needs to be divisible by `conditions_per_task` to counterbalance whether congruent or incongruent block starts first for each task
 total_participants = participants_per_task * num_of_tasks
 
-task_order = np.repeat(range(num_of_tasks), participants_per_task)                                         # Randomizes assignment of session for participants, counterbalanced
+task_order = np.repeat(tasks, participants_per_task)                                         # Randomizes assignment of session for participants, counterbalanced
 first_congruency_order = np.tile(range(num_conditions_per_task), int(total_participants / num_conditions_per_task))
 task_and_first_congruency_order = list(zip(task_order, first_congruency_order))
 random.Random(123).shuffle(task_and_first_congruency_order)
@@ -69,11 +70,11 @@ expInfo['Task'] = task
 first_congruency_int = first_congruency_order[int(participant_number) - 1]
 first_congruency = majority_left = conditions_per_task[first_congruency_int]
 
-if task == 0:
+if task == "Neutral":
     first_congruency_upload = 'NA'
-elif task == 1:
+elif task == "Predictive Blocks":
     first_congruency_upload = first_congruency                                  # Record whether the first block is either mostly congruent or incongruent
-elif task == 2:
+elif task == "Predictive Locations":
     first_congruency_upload = 'Even_Split'
 expInfo['First_Congruency'] = first_congruency_upload
 second_congruency = majority_right = conditions_per_task[1 - first_congruency_int]
@@ -117,10 +118,10 @@ mic_1 = microphone.AdvAudioCapture(name = 'mic_1',
                                                            '.wav',
                                    stereo=False, chnl=0)
 
-if task < 2:
-    x_distance = 0                                                              # Unless the task is task #2, the stimuli (pics and words) should be presented at the center of the screen
-else:
-    x_distance = 7                                                              # For task # 2, the stimuli are presented this many centimeters on either the right or left of the screen (side depends on the trial number, which in turn depends on the congruency of the trial)
+if task == "Neutral" or task == "Predictive Blocks":
+    x_distance = 0                                                              # Unless the task is "Predictive Locations", the stimuli (pics and words) should be presented at the center of the screen
+elif task == "Predictive Locations":
+    x_distance = 7                                                              # For task "Predictive Locations", the stimuli are presented this many centimeters on either the right or left of the screen (side depends on the trial number, which in turn depends on the congruency of the trial)
     side_randomizer = random.choice([-1, 1])                                    # This randomizer is used so that, later on during the `assign_sides_to_rows` function, we randomize whether rows above/below a certain number get assigned to either the right or left of the screen, and this randomization will allow this sorting to differ from participant to participant
     x_distance *= side_randomizer
 
@@ -134,7 +135,7 @@ else:
 ##-----------------------------TRIAL PROPORTIONS------------------------------##
 
 
-if task == 1:                                                                   # For task #1, set what percent of trials during a mostly-congruent block are congruent, and during a mostly-incongruent block are incongruent
+if task == "Predictive Blocks":                                                                   # For task "Predictive Blocks", set what percent of trials during a mostly-congruent block are congruent, and during a mostly-incongruent block are incongruent
 
     congruent_block_dominance = .75                                             # Because in our study these two variables are equal, we could have combined these variables into one; however this set-up accomodates specifying different ratios for congruent- vs incongruent-dominant blocks
     incongruent_block_dominance = .75
@@ -162,11 +163,11 @@ incongruent_overall = 1 - congruent_overall
 incongruent_multiplier = 1 + incongruent_overall                                # Gets used later to determine how many pictures we need to work with so that there are enough (extra) items/text from incongruent trials that they never have to also be used as text or pics in any other trial in either the practice or main sessions
 
 
-if task == 2: # orthogonal (double check that indeed they are based on the coding) to the percent of trials/blocks that are congruent/incongruent, specify how much each side (right or left) corresponds to a trial's congruency
+if task == "Predictive Locations": # orthogonal (double check that indeed they are based on the coding) to the percent of trials/blocks that are congruent/incongruent, specify how much each side (right or left) corresponds to a trial's congruency
     congruent_side_dominance = .75                                         # again, like above, could have set this and the below variable as just one variable since they take on the same value here, but for scalability in theory left and right could have different proportions
     incongruent_side_dominance = .75
 
-else:                                                                           # If task # < 2 then the sides don't indicate congruency (and actually trials in those tasks all have an `x_distance` of 0 anyways)
+elif task == "Neutral" or task == "Predictive Blocks":                                                                           # If task is "Neutral" or "Predictive Blocks" then the sides don't indicate congruency (and actually trials in those tasks all have an `x_distance` of 0 anyways)
     congruent_side_dominance = incongruent_side_dominance = .5
 
 
@@ -231,7 +232,7 @@ def df_pipe(df, pic_total, trial_total, top_or_bottom):
                            X.Dominant_Response, X.Lead_Dominant_Response)) >>
     mutate(x_pos = assign_sides_to_rows(X.row_num, trial_total)) >>
     head(trial_total) >>                                                        # Strips out the rows that supplied the incongruent labels
-    sample(frac = 1)                                                            # Shuffle the rows, otherwise trials will be ordered by congruency and (in task # 2's case) side of the screen of appearance
+    sample(frac = 1)                                                            # Shuffle the rows, otherwise trials will be ordered by congruency and (in task "Predictive Locations" case) side of the screen of appearance
   )
   return df_for_piping
 
@@ -317,7 +318,7 @@ main_trials_df = (main_trials_df >>
     arrange(X.row_num) >>
     mutate(block = to_ceil((X.row_num  + 1) / trials_per_block)) >>             # Assigns block numbers to each trial, which will eventually get saved into the exported experiment csv
     group_by(X.block) >>
-    sample(frac = 1)                                                            # If we don't shuffle, then for task # 1 the end of each block is going to filled with trials that match the congruency that is dominant in the block (like for a congruent-dominant block 1, we'll presumably pass say 15 incongruent trials before 50 congruent trials, and the loop would just pile on the ~45 congruent trials on the back of the block)
+    sample(frac = 1)                                                            # If we don't shuffle, then for task "Predictive Blocks" the end of each block is going to filled with trials that match the congruency that is dominant in the block (like for a congruent-dominant block 1, we'll presumably pass say 15 incongruent trials before 50 congruent trials, and the loop would just pile on the ~45 congruent trials on the back of the block)
 )
 
 # Add in the practice trials at the front of the final trial matrix csv,
@@ -330,12 +331,12 @@ ready_for_matrix = (pic_csv >>
 )
 
 
-# For task # 0, swaps the labels on the screen to 5-letter gibberish words
+# For task "Neutral", swaps the labels on the screen to 5-letter gibberish words
 # composed only of consonants; selected five letters because that seemed like
 # somewhere in the middle for the words typically presented, and used the
 # same-length gibberish for every trial so there was no (and participants
 # didn't bother to look for a) relationship betewen picture and word length
-if task == 0:
+if task == "Neutral":
 
     gibberish_word_length = 5
     skip_letters = '[aeilouy]'                                                  # Removes these characters from possibly being in the gibberish word
@@ -372,11 +373,11 @@ def runTrial():
             mic_1.stop()
             core.quit()
         win.flip()
-        
+
     def fix_as_reference():
         if x_distance != 0:
             fix.draw()
-    
+
     timeout_2 = talk_spillover + fix_duration
     vpvkOff = vk.OffsetVoiceKey()                                               # Tracks voice offset
     vpvkOn = vk.OnsetVoiceKey(sec = 40)                      # Tracks voice onset (note- without the `sec = ` parameter, it's possible there will be an error that the baseline is too quiet; 40 is just so that it lasts longer than the trial
@@ -393,7 +394,7 @@ def runTrial():
         [i.draw() for i in trial_vals[0]]
 
         fix_as_reference()
-        
+
         if frames_transpired_1 >= timeout_1 and vpvkOn.event_onset == "NA":
             break
 
@@ -419,13 +420,13 @@ def runTrial():
 ##-------------------------------DEFINE ITI-----------------------------------##
 
     while frames_transpired_2 < timeout_2:
-                
+
         if frames_transpired_2 < talk_spillover:
 
             [i.draw() for i in trial_vals[0]]
-            
+
             fix_as_reference()
-            
+
         elif (trial_num + 1) % trials_per_block != 0:
             fix.draw()
 
@@ -436,7 +437,7 @@ def runTrial():
             timeout_2 += ITI_talking_penalty
 
         frames_transpired_2 += 1
-        
+
         stop_if_esc()
 
 
@@ -460,14 +461,14 @@ def create_inst(t):
 def continue_goback(s):
     return "\n\nPress space to " + s + " or \"B\" to go back."
 
-if task == 0:
+if task == "Neutral":
     sensical = "nonsense characters"
-elif task == 1 or task == 2:
+elif task == "Predictive Blocks" or task == "Predictive Locations":
     sensical  = "word"
 
-if task == 0 or task == 1:
+if task == "Neutral" or task == "Predictive Blocks":
     location_info = ""
-elif task == 2:
+elif task == "Predictive Locations":
     location_info = ", either on the left or right of the screen,"
 
 inst1 = create_inst("Welcome to the study! It's a pretty straight-forward " +
