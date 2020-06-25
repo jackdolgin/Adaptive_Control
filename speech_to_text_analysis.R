@@ -131,10 +131,16 @@ pull_in_from_google3 %>%
 
 
 pull_in_from_google3 %>%
-  ggplot(aes(x = Congruency, y = preciseStartTime, fill = Bias)) +
+  ggplot(aes(x = NA, y = preciseStartTime, fill = Bias)) +
   geom_split_violin(alpha = .5, show.legend = FALSE) +
   geom_boxplot(width = .2, position = position_dodge(.25), outlier.shape = NA,
                alpha = .3, aes(color = Congruency), size = .5) +
   scale_fill_manual(values=c("#D55E00", "#0072B2")) +
   scale_color_manual(values=c("#D55E00", "#0072B2")) +
-  theme_bw()
+  theme_minimal() +
+  theme(legend.position="top", legend.box = "horizontal",
+        legend.spacing = unit(1, "cm"), panel.grid.major.x=element_blank(),
+        axis.text.x=element_blank(), axis.title.x=element_blank()) +
+  guides(color = guide_legend("Trial", order = 1),
+         fill = guide_legend("Block/Location", order = 2)) +
+  facet_wrap(Task ~ Congruency, nrow = 1)
